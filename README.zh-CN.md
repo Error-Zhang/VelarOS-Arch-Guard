@@ -2,6 +2,9 @@
 
 VelarOS Arch Guard 是一个面向 JavaScript 和 TypeScript 项目的可扩展架构策略引擎。它负责把项目边界变成可执行检查，但不绑定具体框架、构建工具或产品。
 
+它从 VelarOS Desktop 正在使用的架构门禁链路中拆出。公开仓库负责可复用的执行引擎与
+插件契约；VelarOS 专属包名、路径、baseline 和产品策略仍保留在私有下游插件中。
+
 它提供：
 
 - 带类型的 Check 与插件 API；
@@ -14,19 +17,19 @@ VelarOS Arch Guard 是一个面向 JavaScript 和 TypeScript 项目的可扩展�
 
 项目自己的包边界、禁止导入、命名约束、框架约定和产品架构应该放在项目插件里，不进入公共引擎。
 
-[English](README.md)
+[English](README.md) · [官网介绍](https://velaros.cn/blog/open-sourcing-arch-guard)
 
 ## 安装
 
-当前可以从经过校验的 GitHub `v0.1.0` 标签安装：
+首个 npm registry 版本正在准备中。在 `@velaros/arch-guard` 正式发布前，请安装
+带版本标签的 GitHub Release：
 
 ```bash
-npm install --save-dev github:Error-Zhang/VelarOS-Arch-Guard#v0.1.0
+npm install --save-dev Error-Zhang/VelarOS-Arch-Guard#v0.1.0
 ```
 
-安装后的包名仍是 `@velaros/arch-guard`，文档中的 import 与 CLI 用法不变。
-npm registry 发布流程已经准备好，但 registry 版本尚未上线；发布完成后的标准命令为
-`npm install --save-dev @velaros/arch-guard`。
+仓库会提交编译后的 `dist/`，npm、pnpm、Bun 和 Yarn 消费 Git 依赖时不需要额外执行
+构建脚本。安装后的包名仍是 `@velaros/arch-guard`，文档中的 import 与 CLI 用法不变。
 
 要求 Node.js 20 或更高版本，不要求 Bun。
 
