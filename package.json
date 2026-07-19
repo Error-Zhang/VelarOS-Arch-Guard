@@ -63,7 +63,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",
     "check": "npm run typecheck && npm test && npm pack --dry-run",
-    "prepare": "npm run build",
     "prepack": "npm run build"
   },
   "dependencies": {
