@@ -21,9 +21,16 @@ Project policy does not belong in this package. Package boundaries, forbidden im
 
 ## Install
 
+The verified `v0.1.0` package is currently available from the GitHub release tag:
+
 ```bash
-npm install --save-dev @velaros/arch-guard
+npm install --save-dev github:Error-Zhang/VelarOS-Arch-Guard#v0.1.0
 ```
+
+It is installed under the package name `@velaros/arch-guard`, so the documented
+imports and CLI commands are identical. npm registry publication is prepared but
+not yet live; after it is published, the canonical registry command will be
+`npm install --save-dev @velaros/arch-guard`.
 
 Node.js 20 or newer is required. The CLI and library run on Node; Bun is not required.
 
