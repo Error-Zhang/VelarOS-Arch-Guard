@@ -1,0 +1,84 @@
+{
+  "name": "@velaros/arch-guard",
+  "version": "0.1.0",
+  "description": "An extensible architecture policy engine for JavaScript and TypeScript projects.",
+  "keywords": [
+    "architecture",
+    "architecture-testing",
+    "lint",
+    "guardrail",
+    "duplication",
+    "plugin"
+  ],
+  "license": "MIT",
+  "author": "Error-Zhang",
+  "homepage": "https://github.com/Error-Zhang/VelarOS-Arch-Guard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Error-Zhang/VelarOS-Arch-Guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Error-Zhang/VelarOS-Arch-Guard/issues"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "arch-guard": "./bin/arch-guard.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    },
+    "./reporters": {
+      "types": "./dist/reporters/index.d.ts",
+      "import": "./dist/reporters/index.js"
+    },
+    "./checks": {
+      "types": "./dist/checks/index.d.ts",
+      "import": "./dist/checks/index.js"
+    },
+    "./checks/duplication": {
+      "types": "./dist/checks/duplication/index.d.ts",
+      "import": "./dist/checks/duplication/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/fix-esm-extensions.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "check": "npm run typecheck && npm test && npm pack --dry-run",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "picomatch": "^4.0.3",
+    "typescript": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "@types/picomatch": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

@@ -1,0 +1,27 @@
+name: GitHub Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - id: pack
+        shell: bash
+        run: echo "file=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_FILE: ${{ steps.pack.outputs.file }}
+        run: gh release create "$GITHUB_REF_NAME" "$PACKAGE_FILE" --generate-notes --verify-tag

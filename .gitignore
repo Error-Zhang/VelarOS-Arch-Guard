@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+*.tsbuildinfo
+
+# Defensive: TypeScript build artifacts must never appear inside src/.
+# Stray .d.ts/.js next to .ts here would pollute file scans and baselines.
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts.map
+src/**/*.d.ts
+!src/globals.d.ts
+!src/**/globals.d.ts
