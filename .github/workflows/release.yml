@@ -20,7 +20,9 @@ jobs:
       - run: npm run check
       - id: pack
         shell: bash
-        run: echo "file=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+        run: |
+          npm pack --silent > npm-pack-output.txt
+          echo "file=$(tail -n 1 npm-pack-output.txt)" >> "$GITHUB_OUTPUT"
       - env:
           GH_TOKEN: ${{ github.token }}
           PACKAGE_FILE: ${{ steps.pack.outputs.file }}
