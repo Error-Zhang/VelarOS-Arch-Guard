@@ -21,7 +21,7 @@ VelarOS Arch Guard 是一个面向 JavaScript 和 TypeScript 项目的可扩展�
 
 ## 安装
 
-首个 npm registry 版本正在准备中。在 `@velaros/arch-guard` 正式发布前，请安装
+首个 npm registry 版本正在准备中。在 `@velaros-ai/arch-guard` 正式发布前，请安装
 带版本标签的 GitHub Release：
 
 ```bash
@@ -29,7 +29,7 @@ npm install --save-dev Error-Zhang/VelarOS-Arch-Guard#v0.1.0
 ```
 
 仓库会提交编译后的 `dist/`，npm、pnpm、Bun 和 Yarn 消费 Git 依赖时不需要额外执行
-构建脚本。安装后的包名仍是 `@velaros/arch-guard`，文档中的 import 与 CLI 用法不变。
+构建脚本。安装后的包名仍是 `@velaros-ai/arch-guard`，文档中的 import 与 CLI 用法不变。
 
 要求 Node.js 20 或更高版本，不要求 Bun。
 
@@ -44,8 +44,8 @@ npx arch-guard run
 `init` 会生成一份可直接运行的 `arch-guard.config.mjs`：
 
 ```js
-import { defineConfig } from '@velaros/arch-guard'
-import { crossFileDuplication } from '@velaros/arch-guard/checks'
+import { defineConfig } from '@velaros-ai/arch-guard'
+import { crossFileDuplication } from '@velaros-ai/arch-guard/checks'
 
 export default defineConfig({
   files: {
@@ -98,7 +98,7 @@ arch-guard run --format stylish --format sarif --out reports/arch-guard.sarif
 `plugin` 是受支持的扩展入口：
 
 ```js
-import { defineCheck, toRelativePosix } from '@velaros/arch-guard/plugin'
+import { defineCheck, toRelativePosix } from '@velaros-ai/arch-guard/plugin'
 
 export const noDirectDatabaseImports = defineCheck({
   id: 'example/no-direct-database-imports',
@@ -124,10 +124,10 @@ export const noDirectDatabaseImports = defineCheck({
 
 公共包只承诺四个入口：
 
-- `@velaros/arch-guard`：配置、Runner 和结果模型；
-- `@velaros/arch-guard/plugin`：Check/插件协议与受支持的分析工具；
-- `@velaros/arch-guard/checks`：公共通用检查；
-- `@velaros/arch-guard/reporters`：Reporter 工厂。
+- `@velaros-ai/arch-guard`：配置、Runner 和结果模型；
+- `@velaros-ai/arch-guard/plugin`：Check/插件协议与受支持的分析工具；
+- `@velaros-ai/arch-guard/checks`：公共通用检查；
+- `@velaros-ai/arch-guard/reporters`：Reporter 工厂。
 
 源码内部路径不属于公共 API。
 

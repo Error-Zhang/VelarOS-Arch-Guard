@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { defineCheck, runArchGuard } from '@velaros/arch-guard'
+import { defineCheck, runArchGuard } from '@velaros-ai/arch-guard'
 
 function temporaryProject(prefix) {
   return mkdtempSync(join(tmpdir(), prefix))

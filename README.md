@@ -26,7 +26,7 @@ Project policy does not belong in this package. Package boundaries, forbidden im
 
 ## Install
 
-The first registry release is being prepared. Until `@velaros/arch-guard` is
+The first registry release is being prepared. Until `@velaros-ai/arch-guard` is
 available on npm, install the tagged GitHub release:
 
 ```bash
@@ -35,7 +35,7 @@ npm install --save-dev Error-Zhang/VelarOS-Arch-Guard#v0.1.0
 
 The repository versions `dist/`, so npm, pnpm, Bun, and Yarn can consume the Git
 dependency without running a build script. It is installed under the package name
-`@velaros/arch-guard`, so the documented imports and CLI commands are unchanged.
+`@velaros-ai/arch-guard`, so the documented imports and CLI commands are unchanged.
 
 Node.js 20 or newer is required. The CLI and library run on Node; Bun is not required.
 
@@ -50,8 +50,8 @@ npx arch-guard init
 That produces `arch-guard.config.mjs` with the generic cross-file duplication check enabled:
 
 ```js
-import { defineConfig } from '@velaros/arch-guard'
-import { crossFileDuplication } from '@velaros/arch-guard/checks'
+import { defineConfig } from '@velaros-ai/arch-guard'
+import { crossFileDuplication } from '@velaros-ai/arch-guard/checks'
 
 export default defineConfig({
   files: {
@@ -112,7 +112,7 @@ Use `arch-guard help` for the complete option list.
 The `plugin` entrypoint is the supported authoring surface. Checks receive a repository context and a structured report builder:
 
 ```js
-import { defineCheck, toRelativePosix } from '@velaros/arch-guard/plugin'
+import { defineCheck, toRelativePosix } from '@velaros-ai/arch-guard/plugin'
 
 export const noDirectDatabaseImports = defineCheck({
   id: 'example/no-direct-database-imports',
@@ -139,7 +139,7 @@ export const noDirectDatabaseImports = defineCheck({
 Register a check directly in a config, or publish a plugin:
 
 ```js
-import { definePlugin } from '@velaros/arch-guard/plugin'
+import { definePlugin } from '@velaros-ai/arch-guard/plugin'
 import { noDirectDatabaseImports } from './checks/no-direct-database-imports.mjs'
 
 export default function exampleArchitecture() {
@@ -153,10 +153,10 @@ export default function exampleArchitecture() {
 
 The package exports four deliberate surfaces:
 
-- `@velaros/arch-guard` — configuration, runner, and result models;
-- `@velaros/arch-guard/plugin` — check/plugin contracts and supported analysis helpers;
-- `@velaros/arch-guard/checks` — generic built-in checks;
-- `@velaros/arch-guard/reporters` — reporter factories.
+- `@velaros-ai/arch-guard` — configuration, runner, and result models;
+- `@velaros-ai/arch-guard/plugin` — check/plugin contracts and supported analysis helpers;
+- `@velaros-ai/arch-guard/checks` — generic built-in checks;
+- `@velaros-ai/arch-guard/reporters` — reporter factories.
 
 Internal source paths are not public API.
 

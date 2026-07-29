@@ -1,5 +1,5 @@
 {
-  "name": "@velaros/arch-guard",
+  "name": "@velaros-ai/arch-guard",
   "version": "0.1.0",
   "description": "An extensible architecture policy engine for JavaScript and TypeScript projects.",
   "keywords": [

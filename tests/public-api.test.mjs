@@ -6,10 +6,10 @@ import {
   defineCheck,
   definePlugin,
   runArchGuard,
-} from '@velaros/arch-guard'
-import { crossFileDuplication } from '@velaros/arch-guard/checks'
-import * as pluginApi from '@velaros/arch-guard/plugin'
-import * as reporters from '@velaros/arch-guard/reporters'
+} from '@velaros-ai/arch-guard'
+import { crossFileDuplication } from '@velaros-ai/arch-guard/checks'
+import * as pluginApi from '@velaros-ai/arch-guard/plugin'
+import * as reporters from '@velaros-ai/arch-guard/reporters'
 
 test('documents a small set of stable package entrypoints', async () => {
   assert.equal(typeof defineConfig, 'function')
@@ -21,7 +21,7 @@ test('documents a small set of stable package entrypoints', async () => {
   assert.equal(typeof reporters.sarifReporter, 'function')
 
   await assert.rejects(
-    import('@velaros/arch-guard/core'),
+    import('@velaros-ai/arch-guard/core'),
     (error) => error?.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED'
   )
 })

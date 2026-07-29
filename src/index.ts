@@ -1,5 +1,5 @@
 /**
- * @velaros/arch-guard public runtime entrypoint.
+ * @velaros-ai/arch-guard public runtime entrypoint.
  *
  * 该 barrel 故意只暴露"必须的公共 API"：
  * - 构造 check / plugin / config 的工厂函数与类型
@@ -8,9 +8,9 @@
  *
  * Plugin-authoring helpers, built-in checks, and reporters are exposed through
  * dedicated stable entrypoints:
- *   `@velaros/arch-guard/plugin`
- *   `@velaros/arch-guard/checks`
- *   `@velaros/arch-guard/reporters`
+ *   `@velaros-ai/arch-guard/plugin`
+ *   `@velaros-ai/arch-guard/checks`
+ *   `@velaros-ai/arch-guard/reporters`
  */
 export { defineConfig } from './config/defineConfig'
 export type { LoadConfigOptions } from './config/loadConfig'

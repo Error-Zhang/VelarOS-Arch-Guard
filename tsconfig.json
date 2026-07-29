@@ -17,8 +17,8 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@velaros/arch-guard": ["./src/index.ts"],
-      "@velaros/arch-guard/*": ["./src/*"]
+      "@velaros-ai/arch-guard": ["./src/index.ts"],
+      "@velaros-ai/arch-guard/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"]

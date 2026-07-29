@@ -2,8 +2,8 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { toString } from '../argv.js';
 const DefaultConfigName = 'arch-guard.config.mjs';
-const StarterConfig = `import { defineConfig } from '@velaros/arch-guard'
-import { crossFileDuplication } from '@velaros/arch-guard/checks'
+const StarterConfig = `import { defineConfig } from '@velaros-ai/arch-guard'
+import { crossFileDuplication } from '@velaros-ai/arch-guard/checks'
 
 export default defineConfig({
   files: {

@@ -5,8 +5,8 @@ import { type ParsedArgs, toString } from '../argv'
 
 const DefaultConfigName = 'arch-guard.config.mjs'
 
-const StarterConfig = `import { defineConfig } from '@velaros/arch-guard'
-import { crossFileDuplication } from '@velaros/arch-guard/checks'
+const StarterConfig = `import { defineConfig } from '@velaros-ai/arch-guard'
+import { crossFileDuplication } from '@velaros-ai/arch-guard/checks'
 
 export default defineConfig({
   files: {

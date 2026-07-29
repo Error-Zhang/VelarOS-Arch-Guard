@@ -8,8 +8,8 @@ import {
   defineCheck,
   runArchGuard,
   writeBaselineFile,
-} from '@velaros/arch-guard'
-import { jsonReporter, sarifReporter } from '@velaros/arch-guard/reporters'
+} from '@velaros-ai/arch-guard'
+import { jsonReporter, sarifReporter } from '@velaros-ai/arch-guard/reporters'
 
 test('writes a baseline that suppresses the same stable violation', async () => {
   const rootDir = mkdtempSync(join(tmpdir(), 'arch-guard-baseline-'))
