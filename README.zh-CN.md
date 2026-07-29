@@ -21,15 +21,12 @@ VelarOS Arch Guard 是一个面向 JavaScript 和 TypeScript 项目的可扩展�
 
 ## 安装
 
-首个 npm registry 版本正在准备中。在 `@velaros-ai/arch-guard` 正式发布前，请安装
-带版本标签的 GitHub Release：
-
 ```bash
-npm install --save-dev Error-Zhang/VelarOS-Arch-Guard#v0.1.0
+npm install --save-dev @velaros-ai/arch-guard
 ```
 
-仓库会提交编译后的 `dist/`，npm、pnpm、Bun 和 Yarn 消费 Git 依赖时不需要额外执行
-构建脚本。安装后的包名仍是 `@velaros-ai/arch-guard`，文档中的 import 与 CLI 用法不变。
+也可以安装带版本标签的 GitHub Release（仓库提交了编译后的 `dist/`，
+`Error-Zhang/VelarOS-Arch-Guard#v0.1.1` 无需构建即可消费）；推荐以 npm registry 为准。
 
 要求 Node.js 20 或更高版本，不要求 Bun。
 

@@ -1,6 +1,7 @@
 # VelarOS Arch Guard
 
 [![CI](https://github.com/Error-Zhang/VelarOS-Arch-Guard/actions/workflows/ci.yml/badge.svg)](https://github.com/Error-Zhang/VelarOS-Arch-Guard/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40velaros-ai%2Farch-guard.svg)](https://www.npmjs.com/package/@velaros-ai/arch-guard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-171916.svg)](LICENSE)
 
 VelarOS Arch Guard is an extensible architecture policy engine for JavaScript and TypeScript projects. It turns repository-specific boundaries into executable checks without coupling the engine to a framework, build tool, or application.
@@ -26,16 +27,13 @@ Project policy does not belong in this package. Package boundaries, forbidden im
 
 ## Install
 
-The first registry release is being prepared. Until `@velaros-ai/arch-guard` is
-available on npm, install the tagged GitHub release:
-
 ```bash
-npm install --save-dev Error-Zhang/VelarOS-Arch-Guard#v0.1.0
+npm install --save-dev @velaros-ai/arch-guard
 ```
 
-The repository versions `dist/`, so npm, pnpm, Bun, and Yarn can consume the Git
-dependency without running a build script. It is installed under the package name
-`@velaros-ai/arch-guard`, so the documented imports and CLI commands are unchanged.
+Installing a tagged Git release also works — the repository versions `dist/`, so
+package managers can consume `Error-Zhang/VelarOS-Arch-Guard#v0.1.1` without a
+build step. The npm registry package is the recommended source.
 
 Node.js 20 or newer is required. The CLI and library run on Node; Bun is not required.
 
