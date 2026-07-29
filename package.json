@@ -25,7 +25,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "arch-guard": "./bin/arch-guard.mjs"
+    "arch-guard": "bin/arch-guard.mjs"
   },
   "exports": {
     ".": {
