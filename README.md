@@ -149,14 +149,61 @@ export default function exampleArchitecture() {
 }
 ```
 
-The package exports four deliberate surfaces:
+The package exports five deliberate surfaces:
 
 - `@velaros-ai/arch-guard` — configuration, runner, and result models;
 - `@velaros-ai/arch-guard/plugin` — check/plugin contracts and supported analysis helpers;
 - `@velaros-ai/arch-guard/checks` — generic built-in checks;
+- `@velaros-ai/arch-guard/checks/code-style` — the optional code-style ruleset (see below);
 - `@velaros-ai/arch-guard/reporters` — reporter factories.
 
 Internal source paths are not public API.
+
+## Optional ruleset: `code-style/*`
+
+`@velaros-ai/arch-guard/checks/code-style` ships an **opt-in** ruleset of language-level
+writing rules — absence-value expression, single-source type guards, early return over deep
+nesting, table-driven branching, identity forwarders, redundant strict comparisons, swallowed
+errors, React conditional rendering, team-language comments. Nothing here is enabled by
+default: you register the checks explicitly.
+
+These rules are opinionated. They judge TypeScript and JavaScript constructs only — no product
+architecture — but several of them recommend a **helper vocabulary** (`isPresent`,
+`isPlainObject`, `optionalWhen`, `isEmpty`, `stringifyPretty`, `Nullable<T>` …) shipped by
+`@velaros-ai/core`. Adopt them if that vocabulary — or your own equivalent — exists in your
+codebase; skip them otherwise. Repository coordinates are never hard-coded: every rule reads
+its scanning scope from check options.
+
+```js
+import { defineConfig, definePlugin } from '@velaros-ai/arch-guard'
+import { codeStyleChecks, createCodeStyleDefaults } from '@velaros-ai/arch-guard/checks/code-style'
+
+const codeStyle = definePlugin({
+  name: 'my-code-style',
+  checks: codeStyleChecks,
+  defaults: createCodeStyleDefaults({
+    scope: {
+      scanRoots: ['packages'],
+      runtimeRoots: ['packages/'],          // most rules only scan runtime source
+      frontendRoots: ['packages/ui/src/'],  // JSX rules only scan the frontend
+      skipPatterns: ['^packages/core/src/typeGuards\\.ts$'],
+    },
+    perCheck: {
+      'code-style/forbid-raw-timers': { allowFiles: ['packages/core/src/utils/TimerScope.ts'] },
+    },
+  }),
+})
+
+export default defineConfig({ plugins: [codeStyle], files: { roots: ['packages'] } })
+```
+
+Every scope field is optional; an omitted field means "do not filter". Adopt the ruleset on an
+existing repository the same way as any other check — freeze the current violations with
+`arch-guard baseline update`, then let the ratchet fail new ones.
+
+`code-style/require-chinese-comments` enforces a team language for explanatory comments. It
+exempts JSDoc blocks attached to exported declarations (public API documentation is written for
+external consumers); set `exemptExportedJsDoc: false` to enforce everywhere.
 
 ## Adopt with a baseline
 

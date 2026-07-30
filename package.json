@@ -1,6 +1,6 @@
 {
   "name": "@velaros-ai/arch-guard",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "An extensible architecture policy engine for JavaScript and TypeScript projects.",
   "keywords": [
     "architecture",
@@ -43,6 +43,10 @@
     "./checks": {
       "types": "./dist/checks/index.d.ts",
       "import": "./dist/checks/index.js"
+    },
+    "./checks/code-style": {
+      "types": "./dist/checks/code-style/index.d.ts",
+      "import": "./dist/checks/code-style/index.js"
     },
     "./checks/duplication": {
       "types": "./dist/checks/duplication/index.d.ts",

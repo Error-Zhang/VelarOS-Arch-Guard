@@ -119,14 +119,55 @@ export const noDirectDatabaseImports = defineCheck({
 })
 ```
 
-公共包只承诺四个入口：
+公共包只承诺五个入口：
 
 - `@velaros-ai/arch-guard`：配置、Runner 和结果模型；
 - `@velaros-ai/arch-guard/plugin`：Check/插件协议与受支持的分析工具；
 - `@velaros-ai/arch-guard/checks`：公共通用检查；
+- `@velaros-ai/arch-guard/checks/code-style`：可选的写法规则集（见下节）；
 - `@velaros-ai/arch-guard/reporters`：Reporter 工厂。
 
 源码内部路径不属于公共 API。
+
+## 可选规则集：`code-style/*`
+
+`@velaros-ai/arch-guard/checks/code-style` 提供一组**按需启用**的语言级写法规则——缺席值表达、
+守卫单源、早返代替深嵌套、表驱动分支、恒等转发、冗余严格比较、静默吞错、React 条件渲染、
+注释团队语言等。默认一条都不开，必须显式注册。
+
+这组规则**有主张**：判据只认识 TypeScript / JavaScript 语言构件（不含任何产品架构），但其中
+若干条推荐一套 **helper 词表**（`isPresent` / `isPlainObject` / `optionalWhen` / `isEmpty` /
+`stringifyPretty` / `Nullable<T>` …，由 `@velaros-ai/core` 提供）。你的代码库里有这套词表（或
+等价物）就采纳，没有就跳过。规则本体**不硬编码任何仓库坐标**——扫描面一律从 check options 读。
+
+```js
+import { defineConfig, definePlugin } from '@velaros-ai/arch-guard'
+import { codeStyleChecks, createCodeStyleDefaults } from '@velaros-ai/arch-guard/checks/code-style'
+
+const codeStyle = definePlugin({
+  name: 'my-code-style',
+  checks: codeStyleChecks,
+  defaults: createCodeStyleDefaults({
+    scope: {
+      scanRoots: ['packages'],
+      runtimeRoots: ['packages/'],          // 多数规则只扫运行时源码
+      frontendRoots: ['packages/ui/src/'],  // JSX 规则只扫前端面
+      skipPatterns: ['^packages/core/src/typeGuards\\.ts$'],
+    },
+    perCheck: {
+      'code-style/forbid-raw-timers': { allowFiles: ['packages/core/src/utils/TimerScope.ts'] },
+    },
+  }),
+})
+
+export default defineConfig({ plugins: [codeStyle], files: { roots: ['packages'] } })
+```
+
+scope 每个字段都可省，省了就是「不过滤」。在存量仓库接门的方式与其他 check 一致：先
+`arch-guard baseline update` 冻结存量，再让棘轮拦新增。
+
+`code-style/require-chinese-comments` 约束解释性注释的团队语言，并**豁免挂在导出声明上的 JSDoc
+块**（公开 API 文档是写给外部消费者的）；要连 JSDoc 一起管，设 `exemptExportedJsDoc: false`。
 
 ## Baseline
 
