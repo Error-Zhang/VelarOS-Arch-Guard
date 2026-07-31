@@ -1,0 +1,27 @@
+# 发到 GitHub Packages 的 @velaros-ai 命名空间，与 Platform 各包保持同一条消费路径
+# （同一 registry、同一鉴权、同一 ^x.y.z 写法）。npmjs 那条已退役：同一个 scope 劈在
+# 两个 registry 上时，npm/bun 只能按 scope 配 registry，消费方永远会被送错地方。
+name: Publish to GitHub Packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: '@velaros-ai'
+      - run: npm ci
+      - run: npm run check
+      - run: npm publish --registry=https://npm.pkg.github.com
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
