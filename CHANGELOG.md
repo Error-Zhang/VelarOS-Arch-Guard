@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-08-01
 
 Baseline integrity. The ratchet could previously both under- and over-report, and the read-only
 report command was allowed to move it.
