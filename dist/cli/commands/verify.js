@@ -1,7 +1,7 @@
 import { loadConfig } from '../../config/loadConfig.js';
 import { resolveBaselinePath, runArchGuard } from '../../core/runner.js';
 import { resolveCliFix, toBoolean, toString, toStringArray } from '../argv.js';
-import { applyCliFileScope } from '../fileScope.js';
+import { applyCliFileScope, describeEmptyFileScope } from '../fileScope.js';
 /**
  * `arch-guard verify`：CI / AI agent 友好的短输出。
  *
@@ -25,6 +25,7 @@ async function verifyCommand(args) {
     const fileScope = applyCliFileScope(config, args);
     const asJson = toBoolean(args.options.json);
     const silentReporter = { name: 'silent', report() { } };
+    const emptyScope = describeEmptyFileScope(fileScope);
     const result = await runArchGuard({
         config: fileScope.config,
         filter: {
@@ -33,14 +34,20 @@ async function verifyCommand(args) {
             tags: toStringArray(args.options.tag),
         },
         reporters: [silentReporter],
-        logLevel: 'error',
+        // 默认 warn，不是 error。`verify --fix` 是 CLI 支持的组合（`resolveCliFix` 也认它），
+        // 而「这次修复被拒了」「改写落盘了但 import 没补上」都是 warn 档——钉死在 error 档
+        // 等于让 `verify --fix` 每一条被拒的修复都静默。verify 的一行结论走 stdout，
+        // 这些告警走 stderr，短输出契约不受影响。显式 --log-level 仍然优先。
+        logLevel: resolveVerifyLogLevel(args),
         ignoreBaseline: toBoolean(args.options['no-baseline']),
         baselinePath: toString(args.options['baseline-path']) ?? resolveBaselinePath(config.rootDir),
         warnStaleBaseline: false,
+        failOnStale: toBoolean(args.options['fail-on-stale']),
         fix: resolveCliFix(args),
         fileScopeActive: fileScope.active,
     });
     const summary = result.aggregate.summary();
+    const baselineStatus = result.baselineStatus;
     const failingChecks = result.aggregate.failingReports.map((report) => ({
         id: report.check.id,
         title: report.check.title,
@@ -56,17 +63,56 @@ async function verifyCommand(args) {
             exitCode: result.exitCode,
             summary,
             failing: failingChecks,
+            // 只在真发生时出现：机器消费方要能把「零文件」与「零违规」分开，而现有 payload 形状不变。
+            ...(emptyScope !== undefined ? { emptyFileScope: emptyScope } : {}),
+            ...(baselineStatus ? { baseline: baselineStatus } : {}),
         };
         console.info(JSON.stringify(payload, null, 2));
         return result.exitCode;
     }
+    const baselineNote = describeBaselineStatus(baselineStatus);
+    // PASS 在空作用域下是最危险的一句话：读的人以为代码过检了，实际一个文件都没扫。
+    const scopeNote = emptyScope === undefined ? '' : ` — NOTE: ${emptyScope}, so no file was scanned.`;
     if (result.exitCode === 0) {
-        console.info(`arch-guard: PASS (${summary.totalChecks} checks).`);
+        console.info(`arch-guard: PASS (${summary.totalChecks} checks).${baselineNote}${scopeNote}`);
         return 0;
     }
+    if (failingChecks.length === 0) {
+        console.info(`arch-guard: FAIL — no failing checks, but the baseline has ${baselineStatus?.staleCount ?? 0} stale entr${baselineStatus?.staleCount === 1 ? 'y' : 'ies'} and --fail-on-stale is set. Retire them with \`arch-guard baseline prune\`.`);
+        return result.exitCode;
+    }
     const failing = failingChecks.map((failing) => `${failing.id}(${failing.violations})`).join(', ');
-    console.info(`arch-guard: FAIL — ${summary.failingChecks}/${summary.totalChecks} checks failing, ${summary.totalViolations} violation(s). Failing: ${failing}.`);
+    console.info(`arch-guard: FAIL — ${summary.failingChecks}/${summary.totalChecks} checks failing, ${summary.totalViolations} violation(s). Failing: ${failing}.${baselineNote}${scopeNote}`);
     return result.exitCode;
+}
+/**
+ * verify 的日志档：显式 `--log-level` 优先，否则 `warn`。
+ *
+ * 0.2.x 钉死 `error`，于是 `verify --fix` 下 `reportDeclinedFixes` 与「改写了但没补 import」
+ * 这两条 warn 全部消失——被拒的修复一条都看不见。verify 平时在 warn 档本来就基本无声
+ * （stale / 撞车提示都被 `warnStaleBaseline: false` 关掉了），放开它不会污染短输出。
+ */
+function resolveVerifyLogLevel(args) {
+    const explicit = toString(args.options['log-level']);
+    if (explicit === 'error' || explicit === 'warn' || explicit === 'info' || explicit === 'debug') {
+        return explicit;
+    }
+    return 'warn';
+}
+/** 一行 baseline 健康度尾注：stale 数与内容撞车数（0 时不打扰）。 */
+function describeBaselineStatus(status) {
+    if (!status || status.scopeActive)
+        return '';
+    const notes = [];
+    if (status.staleCount > 0)
+        notes.push(`${status.staleCount} stale baseline entries`);
+    if (status.contentMismatchCount > 0) {
+        notes.push(`${status.contentMismatchCount} baseline content mismatches`);
+    }
+    if (status.quotaOverflowCount > 0) {
+        notes.push(`${status.quotaOverflowCount} beyond the frozen occurrence count`);
+    }
+    return notes.length > 0 ? ` (${notes.join(', ')})` : '';
 }
 export { verifyCommand };
 //# sourceMappingURL=verify.js.map

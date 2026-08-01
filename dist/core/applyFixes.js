@@ -74,8 +74,16 @@ function collectCurrentFixPass(violations) {
     }
     return result;
 }
+/**
+ * 应用本轮修复。
+ *
+ * 顺序铁律：**先做全部区间替换，最后统一补 import**。fixer 持有的是本轮解析时的 offset，
+ * 而 import 插在文件头会把后面所有 offset 顶掉——先补 import 就会让同文件其余替换切错位置。
+ * flush 时重新读盘，因此不受前面替换的影响。
+ */
 async function applyScheduledFixes(violations, ctx, log) {
     let applied = 0;
+    const declined = new Map();
     for (const violation of collectCurrentFixPass(violations)) {
         const fixer = violation.applyFix;
         if (!fixer)
@@ -86,10 +94,39 @@ async function applyScheduledFixes(violations, ctx, log) {
             log.info(`arch-guard: applied fix for ${violation.ruleId} (${violation.file ?? '?'}:${violation.line ?? '?'})`);
         }
         catch (error) {
-            log.warn(`arch-guard: fix failed for ${violation.ruleId} (${violation.file ?? '?'}): ${error instanceof Error ? error.message : String(error)}`);
+            const reason = error instanceof Error ? error.message : String(error);
+            const bucket = declined.get(reason);
+            if (bucket)
+                bucket.count += 1;
+            else {
+                declined.set(reason, {
+                    count: 1,
+                    sample: `${violation.ruleId} (${violation.file ?? '?'}:${violation.line ?? '?'})`,
+                });
+            }
         }
     }
+    reportDeclinedFixes(declined, log);
+    ctx.flushPendingImports();
     return applied;
+}
+/**
+ * 一次性报出被放弃的修复。
+ *
+ * 逐条 warn 在几百条同因失败时等于刷屏，最后没人读；按理由聚合才看得见「配置少了一块」。
+ * 放弃的修复不会静默——违规本身照旧红着，这里再补上「为什么没自动修」。
+ */
+function reportDeclinedFixes(declined, log) {
+    if (declined.size === 0)
+        return;
+    let total = 0;
+    for (const { count } of declined.values())
+        total += count;
+    log.warn(`arch-guard: declined ${total} autofix${total === 1 ? '' : 'es'} — applying them would not have compiled. ` +
+        'Nothing was written for these violations:');
+    for (const [reason, { count, sample }] of [...declined].sort((a, b) => b[1].count - a[1].count)) {
+        log.warn(`  ${String(count).padStart(5)}  ${reason} (e.g. ${sample})`);
+    }
 }
 export { applyScheduledFixes, collectFixableViolations, resolveFixEnabled };
 //# sourceMappingURL=applyFixes.js.map

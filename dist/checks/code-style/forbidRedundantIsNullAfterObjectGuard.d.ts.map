@@ -1,0 +1,1 @@
+{"version":3,"file":"forbidRedundantIsNullAfterObjectGuard.d.ts","sourceRoot":"","sources":["../../../src/checks/code-style/forbidRedundantIsNullAfterObjectGuard.ts"],"names":[],"mappings":"AAOA;;;;;;;;;;GAUG;AACH,QAAA,MAAM,qCAAqC,uBAgDzC,CAAA;AA8GF,OAAO,EAAE,qCAAqC,EAAE,CAAA"}

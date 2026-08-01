@@ -6,12 +6,18 @@ import { toBoolean, toString, toStringArray } from './argv.js';
 const SupportedFileExtensions = new Set(['.ts', '.tsx', '.js', '.mjs']);
 const AllConfiguredRoots = '<arch-guard:all-configured-roots>';
 function applyCliFileScope(config, args) {
+    const requestedInputs = describeRequestedScope(args);
+    const requested = requestedInputs.length > 0;
     const files = collectCliFileScopeFiles(config.rootDir, args);
     if (files.length === 0)
         return {
-            config,
-            active: false,
+            // 要求过作用域却解析成空：扫描面收成空集，**不是**回落成全仓。
+            config: requested ? withEmptyFileScope(config) : config,
+            active: requested,
             files: [],
+            requested,
+            empty: requested,
+            requestedInputs,
         };
     const includePatterns = files.flatMap((path) => fileScopePatternsFor(config.rootDir, path));
     const roots = narrowScopeRoots(config.files?.roots, files.flatMap((path) => fileScopeRootsFor(config.rootDir, path)));
@@ -29,7 +35,41 @@ function applyCliFileScope(config, args) {
         },
         active: true,
         files,
+        requested,
+        empty: false,
+        requestedInputs,
     };
+}
+/**
+ * 空作用域的扫描面：一个不可能存在的 root + 同样不可能的 include pattern。
+ *
+ * `restrictRoots` 把「roots 为空数组」当成「不限制」，所以不能用空数组表达空集。
+ */
+const EmptyScopeSentinel = '<arch-guard:empty-file-scope>';
+function withEmptyFileScope(config) {
+    return {
+        ...config,
+        files: {
+            ...config.files,
+            roots: Object.freeze([EmptyScopeSentinel]),
+            includePatterns: Object.freeze([`${EmptyScopeSentinel}/**`]),
+        },
+    };
+}
+/** 用户在命令行上要求过哪些作用域实参（用于空作用域的解释文案）。 */
+function describeRequestedScope(args) {
+    const inputs = [];
+    for (const positional of args.positionals)
+        inputs.push(positional);
+    for (const file of toStringArray(args.options.file))
+        inputs.push(`--file ${file}`);
+    if (toBoolean(args.options.changed))
+        inputs.push('--changed');
+    if (toBoolean(args.options.diff))
+        inputs.push('--diff');
+    if (toBoolean(args.options.staged))
+        inputs.push('--staged');
+    return inputs;
 }
 function collectCliFileScopeFiles(rootDir, args) {
     const explicit = [...args.positionals, ...toStringArray(args.options.file)];
@@ -182,5 +222,22 @@ function looksLikeGlob(path) {
 function unique(values) {
     return [...new Set(values.filter(Boolean))];
 }
-export { applyCliFileScope };
+/**
+ * 「要求了作用域，但一个可扫文件都没有」的一句话说明；不是这种情况时返回 `undefined`。
+ *
+ * **写**命令拿它当拒绝理由：什么都不做，基线一个字节不碰。
+ * **读**命令（`run` / `verify` / `baseline check`）拿它当告示——「扫了零个文件」和
+ * 「扫完了没问题」必须可分辨，否则 `verify --changed` 在一个只改了 .md 的分支上打出
+ * `PASS`，读的人有充分理由以为代码被检查过了。
+ *
+ * 读命令**不因此短路**：不读文件扫描面的 check（docs 索引、package.json 契约、i18n、
+ * 遗留 .mjs 巨石）照样报全量违规，跳过它们等于让门变松。告示只加信息，不改判定。
+ */
+function describeEmptyFileScope(scope) {
+    if (!scope.empty)
+        return undefined;
+    return (`${scope.requestedInputs.join(' ')} resolved to 0 scannable files ` +
+        '(arch-guard only reads .ts/.tsx/.js/.mjs)');
+}
+export { applyCliFileScope, describeEmptyFileScope };
 //# sourceMappingURL=fileScope.js.map

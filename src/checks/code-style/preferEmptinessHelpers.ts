@@ -2,6 +2,7 @@ import { defineCheck } from '../../core/defineCheck'
 import type { FixContext } from '../../core/fixContext'
 import ts from 'typescript'
 
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import { collectCodeStyleFiles, getCachedSourceFile, lineOf, snippetOf, walk } from './_shared'
 import { CodeStyleFixPhase } from './fixPhases'
 
@@ -35,6 +36,7 @@ const preferEmptinessHelpers = defineCheck({
   defaultSeverity: 'error',
   run({ context, report }) {
     const section = report.section('Emptiness helper usage')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context)) {
       const sourceFile = getCachedSourceFile(context, info)
       const hints = collectRuntimeHints(sourceFile)
@@ -56,7 +58,8 @@ const preferEmptinessHelpers = defineCheck({
                   info.relativePath,
                   sourceFile,
                   violation.fix.replaceNode,
-                  violation.fix.replacement
+                  violation.fix.replacement,
+                  helpers
                 ),
               }
             : {}),
@@ -332,14 +335,16 @@ function fixReplaceLengthCheck(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.Node,
-  replacement: string
+  replacement: string,
+  helpers: HelperImportSources
 ): (ctx: FixContext) => void {
-  return (ctx) => {
-    const text = ctx.readTextFile(relativePath)
-    const start = node.getStart(sourceFile)
-    const end = node.getEnd()
-    ctx.writeTextFile(relativePath, `${text.slice(0, start)}${replacement}${text.slice(end)}`)
-  }
+  return fixReplaceSpan({
+    relativePath,
+    start: node.getStart(sourceFile),
+    end: node.getEnd(),
+    replacement,
+    helpers,
+  }).applyFix
 }
 
 export { preferEmptinessHelpers }

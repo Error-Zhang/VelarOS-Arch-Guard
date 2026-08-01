@@ -2,6 +2,7 @@ import { defineCheck } from '../../core/defineCheck'
 import type { FixContext } from '../../core/fixContext'
 import ts from 'typescript'
 
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import {
   collectCodeStyleFiles,
   getCachedSourceFile,
@@ -34,6 +35,7 @@ const forbidUselessConditional = defineCheck({
   defaultSeverity: 'warning',
   run({ context, report }) {
     const section = report.section('Useless boolean conditional')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context)) {
       const sourceFile = getCachedSourceFile(context, info)
       walk(sourceFile, (node) => {
@@ -59,7 +61,8 @@ const forbidUselessConditional = defineCheck({
               sourceFile,
               node.getStart(sourceFile),
               node.getEnd(),
-              plan.replacement
+              plan.replacement,
+              helpers
             ),
           })
           return
@@ -81,7 +84,8 @@ const forbidUselessConditional = defineCheck({
               sourceFile,
               plan.start,
               plan.end,
-              plan.replacement
+              plan.replacement,
+              helpers
             ),
           })
         }
@@ -239,12 +243,10 @@ function fixReplaceRange(
   sourceFile: ts.SourceFile,
   start: number,
   end: number,
-  replacement: string
+  replacement: string,
+  helpers: HelperImportSources
 ): (ctx: FixContext) => void {
-  return (ctx) => {
-    const text = ctx.readTextFile(relativePath)
-    ctx.writeTextFile(relativePath, `${text.slice(0, start)}${replacement}${text.slice(end)}`)
-  }
+  return fixReplaceSpan({ relativePath, start, end, replacement, helpers }).applyFix
 }
 
 /**

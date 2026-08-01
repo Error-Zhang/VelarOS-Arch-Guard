@@ -89,8 +89,11 @@ arch-guard run [files...]
 arch-guard verify
 arch-guard list [--by-tag | --json | --ids-only]
 arch-guard explain <check-id>
-arch-guard baseline update|check
+arch-guard baseline update|prune|migrate|check
 ```
+
+Only `baseline update`, `baseline prune` and `baseline migrate` write the baseline. `run` and
+`verify` are strictly read-only.
 
 Common scoping and output options:
 
@@ -214,7 +217,107 @@ arch-guard baseline update
 arch-guard run
 ```
 
-The default snapshot is `.arch-guard/baseline.json`. Future runs report violations that are not covered by the snapshot and can prune stale entries. Commit the baseline when it represents an intentional migration boundary.
+The default snapshot is `.arch-guard/baseline.json`. Future runs report violations that are not
+covered by the snapshot. Commit the baseline when it represents an intentional migration boundary.
+
+### The baseline is a ratchet, so only three commands may write it
+
+| command | effect |
+| --- | --- |
+| `baseline update` | re-freeze violations. Honours `--file` / `--changed` / `--staged` / `--only` / `--skip` / `--tag`; a scoped update **merges** — entries outside the scope are left byte-for-byte alone, and violations outside the scope are not frozen either |
+| `baseline prune` | retire entries that no longer match anything, and shrink occurrence counts down to what this run actually found. Refuses to run under a scope, and refuses to empty a baseline that this run matched nothing of (`--force` overrides) |
+| `baseline migrate` | backfill `contentDigest` and occurrence counts on entries written by older versions, and report exactly how many waivers the migration takes away |
+
+Everything else is read-only. Concretely:
+
+* `run`, `verify`, `list`, `explain`, `doctor` never touch the file. Before 0.3.0 `run` pruned
+  stale entries **by default**, which made "read the violations" a mutating operation: one
+  `arch-guard run` could turn a red tree green, and a `git checkout` of the baseline could turn it
+  red again. `--no-prune-stale-baseline` is still accepted and now does nothing.
+* A bare `arch-guard baseline` prints usage and exits 2. There is no default action — the word you
+  type to discover the sub-commands must not rewrite the ratchet.
+* `--dry-run` prints the full diff and writes nothing. Unknown long options are rejected with
+  exit 2 rather than ignored, so a typo in `--dry-run` cannot quietly turn into a write.
+* A scope that resolves to **zero** scannable files (`--changed` when the diff is all `.md`,
+  `--staged` with nothing TypeScript staged) is a no-op, not a whole-repository re-freeze. Read
+  commands still run — checks that ignore the file scan surface report repository-wide, and
+  skipping them would weaken the gate — but they say that no file was scanned, so "scanned
+  nothing" never looks like "found nothing". `verify --json` carries it as `emptyFileScope`.
+* Any write that would produce byte-identical content is skipped, so the file's mtime only moves
+  when the ratchet actually moved.
+
+Prefer a scoped update. An unscoped `baseline update` freezes *everything* currently reported,
+including debt written by somebody else since the last freeze; it prints every newly frozen entry,
+and every entry whose occurrence count grew, so that is at least visible.
+
+**`--skip` is not a scope.** It names what to leave out, which leaves every *other* check covering
+the whole repository, so `baseline update --skip X` is a full re-freeze. It is still honoured as a
+merge directive — entries belonging to `X` are preserved byte-for-byte — but the summary reports it
+as `whole repository, minus --skip X` and keeps the "you are freezing debt you did not write"
+warning. Narrow with `--file` / `--changed` / `--staged` / `--only` / `--tag`.
+
+### Entry identity, and what it cannot do yet
+
+An entry is keyed by `checkId + ruleId + fingerprint`, where the fingerprint is a hash of whatever
+the check passes as `fingerprintInput`. Checks commonly build that from `file::line::kind`, which
+means two *different* violations on the same line of the same file under the same rule hash to the
+same value — and the ratchet then waives a violation it has never seen. Identity therefore has two
+more parts:
+
+* **`contentDigest`** — a hash of the violation message with its `path:line:` prefix removed.
+  A waiver requires the fingerprint *and* the digest to match.
+* **`count`** — how many occurrences the entry waives (absent = 1). Matching by key alone is a map
+  lookup with no arithmetic, so one frozen record would waive an unbounded number of identical
+  violations: freeze one `typeof x === 'string'`, then paste three copies onto that line, and the
+  gate stays green. Digests do not help there — three byte-identical expressions have the same
+  digest. Only counting does.
+
+How that plays with existing baselines:
+
+* Entries without a digest (written by ≤ 0.2.x) keep the old fingerprint-only, uncounted behaviour,
+  so an existing baseline needs **no** migration to keep working, byte-for-byte.
+* `baseline update` writes digests and counts for everything it freezes.
+* `baseline migrate` backfills them. The content comes from the entry's own frozen message, not
+  from today's code, so a frozen entry that no longer matches today's code is reported and starts
+  failing the gate instead of silently covering the newcomer. **Every** entry gets a digest,
+  including the ones this run cannot match: their message is right there in the file, the digest is
+  computable offline, and leaving them bare would keep handing that `(file, line, rule)` slot a
+  blank cheque for any future violation. `migrate --dry-run` reports the exact number of
+  currently-waived violations that will stop being waived, by running the whole violation set
+  through both the old and the new baseline.
+
+Known gaps, in the order they hurt:
+
+1. The fingerprint still carries the line number, so moving code (or adding an import above it)
+   makes a frozen entry go stale and reports the unchanged violation as new. Re-anchor with
+   `baseline update --file <moved file>`.
+2. Some rules build a message that does not name the offending code (`forbid-swallowed-errors`,
+   `require-error-logging`, `forbid-redundant-else-after-return`). For those the digest degenerates
+   to a per-rule constant and adds no discrimination — the fingerprint and the count are all that
+   constrain them. Item 2 of the roadmap below is the fix.
+
+### Baseline roadmap
+
+1. **Content-keyed count ratchet.** Replace per-occurrence fingerprints with
+   `(file, checkId, ruleId, contentKey) → count`. Reordering, reformatting, line drift and added
+   imports stop mattering; adding an N+1-th occurrence of the same shape still fails; merge
+   conflicts degrade to comparing two integers instead of reconciling opaque hashes.
+2. **`ViolationInput.contentKey`.** Let checks declare a line-free content key explicitly instead
+   of deriving it from the message, so a reworded message does not invalidate a digest — and so
+   rules whose message carries no per-violation content stop degenerating to a constant.
+3. **Structural anchors** (`file > enclosing named scope > expression text`) for the reviewer-facing
+   `examples[]` list, which stays non-authoritative and is allowed to go stale.
+
+### Baseline roadmap
+
+1. **Content-keyed count ratchet.** Replace per-occurrence fingerprints with
+   `(file, checkId, ruleId, contentKey) → count`. Reordering, reformatting, line drift and added
+   imports stop mattering; adding an N+1-th occurrence of the same shape still fails; merge
+   conflicts degrade to comparing two integers instead of reconciling opaque hashes.
+2. **`ViolationInput.contentKey`.** Let checks declare a line-free content key explicitly instead
+   of deriving it from the message, so a reworded message does not invalidate a digest.
+3. **Structural anchors** (`file > enclosing named scope > expression text`) for the reviewer-facing
+   `examples[]` list, which stays non-authoritative and is allowed to go stale.
 
 ## Autofix safety
 
@@ -230,10 +333,62 @@ Fix-capable checks attach a repair function to a violation. The engine:
 2. applies only the earliest phase for each file in a pass;
 3. applies offsets from right to left and deduplicates identical offsets;
 4. writes atomically;
-5. clears caches and reruns checks before the next phase;
-6. stops at a bounded iteration limit.
+5. adds any imports the repairs asked for, **after** every replacement in the pass has landed;
+6. clears caches and reruns checks before the next phase;
+7. stops at a bounded iteration limit.
 
 Review the diff after autofix. Plugin authors should keep fixes deterministic and narrowly scoped.
+
+### Repairs that introduce a name
+
+A repair that rewrites `typeof x === 'string'` into `isString(x)` introduces an identifier the file
+may not have. Two calls handle it:
+
+* `fix.planNamedImport(file, module, name, offset)` — ask, **before writing anything**, whether the
+  name is usable at that position. `satisfied` means a value import of that name from that module
+  already resolves there; `insert` means the name is free; `blocked` means something else owns it.
+* `fix.requireNamedImport(file, module, name)` — declare the import. The engine defers the
+  insertion to the end of the pass (an import at the top of the file would invalidate every offset
+  the other repairs are holding), re-reads the file, and is idempotent: an existing value import
+  from the same module is extended in place, and a type-only import of the same module is not
+  repurposed.
+
+**A repair that gets `blocked` must throw, not proceed.** Writing the expression and skipping the
+import is the worst possible outcome — the file no longer compiles and nothing said so. The engine
+catches the throw, leaves the file untouched, and prints one aggregated line per reason at the end
+of the pass; the violation itself stays red, so nothing is lost.
+
+`planNamedImport` resolves the name the way TypeScript does, not by scanning the file for a
+matching string. Three shapes that a whole-file "is this name bound anywhere?" test gets wrong:
+
+* an unrelated `const isString` inside *another* function suppresses the import that top-level code
+  needs (repair written, import missing);
+* a same-named symbol imported from a *different* module suppresses it, and the repair silently
+  wires the guard to a foreign function (compiles, wrong semantics);
+* a function **parameter** named `isString` is not a variable declaration at all, so the import is
+  added and then shadowed inside the very function being repaired.
+
+The bundled `code-style` ruleset emits ~28 such primitives, so it needs to be told where they live:
+
+```js
+createCodeStyleDefaults({
+  scope: { /* … */ },
+  helpers: {
+    module: '@your-scope/core',
+    bySymbol: { stringifyPretty: '@your-scope/core/json' },
+  },
+})
+```
+
+**Without a `helpers` block those repairs are declined, loudly, and nothing is written.** Silence
+was the old behaviour and it was wrong: `--fix` produced `TS2304` plus a second wave of `TS2322`
+(an unresolved identifier carries no type predicate, so narrowing that used to work through the raw
+`typeof` collapses, and the error count exceeds the number of missing imports) and printed nothing
+at all. If the host really does inject these primitives as globals, say so:
+
+```js
+createCodeStyleDefaults({ scope: { /* … */ }, helpers: { assumeGlobals: true } })
+```
 
 ## Temporary suppressions
 

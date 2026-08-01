@@ -2,6 +2,7 @@ import { defineCheck } from '../../core/defineCheck'
 import type { FixContext } from '../../core/fixContext'
 import ts from 'typescript'
 
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import { collectCodeStyleFiles, getCachedSourceFile, lineOf, snippetOf, walk } from './_shared'
 import { CodeStyleFixPhase } from './fixPhases'
 
@@ -26,6 +27,7 @@ const preferDoubleBangOverNullishFalse = defineCheck({
   defaultSeverity: 'error',
   run({ context, report }) {
     const section = report.section('Prefer !! over ?? false')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context)) {
       const sourceFile = getCachedSourceFile(context, info)
       walk(sourceFile, (node) => {
@@ -43,7 +45,7 @@ const preferDoubleBangOverNullishFalse = defineCheck({
           fingerprintInput: `${info.relativePath}::${line}::?? false`,
           fixPhase: CodeStyleFixPhase.preferDoubleBangOverNullishFalse,
           fixStartOffset: node.getStart(sourceFile),
-          applyFix: fixReplaceNullishFalse(info.relativePath, sourceFile, node, replacement),
+          applyFix: fixReplaceNullishFalse(info.relativePath, sourceFile, node, replacement, helpers),
         })
       })
     }
@@ -54,14 +56,16 @@ function fixReplaceNullishFalse(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.BinaryExpression,
-  replacement: string
+  replacement: string,
+  helpers: HelperImportSources
 ): (ctx: FixContext) => void {
-  return (ctx) => {
-    const text = ctx.readTextFile(relativePath)
-    const start = node.getStart(sourceFile)
-    const end = node.getEnd()
-    ctx.writeTextFile(relativePath, `${text.slice(0, start)}${replacement}${text.slice(end)}`)
-  }
+  return fixReplaceSpan({
+    relativePath,
+    start: node.getStart(sourceFile),
+    end: node.getEnd(),
+    replacement,
+    helpers,
+  }).applyFix
 }
 
 function formatDoubleBangReplacement(left: ts.Expression, sourceFile: ts.SourceFile): string {

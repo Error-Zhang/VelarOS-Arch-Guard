@@ -1,11 +1,77 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { writeFileAtomically } from '../utils/atomicWrite.js';
+import { ensureNamedImportInSource, planNamedImportInSource, } from '../utils/ensureNamedImport.js';
 function createFixContext(rootDir, log) {
     const absoluteRoot = resolve(rootDir);
+    /** `relativePosix` → `moduleSpecifier` → 名字集合。 */
+    const pendingImports = new Map();
     return {
         rootDir: absoluteRoot,
         log,
+        requireNamedImport(relativePosix, moduleSpecifier, importName) {
+            if (!moduleSpecifier || !importName)
+                return;
+            const byModule = pendingImports.get(relativePosix) ?? new Map();
+            const names = byModule.get(moduleSpecifier) ?? new Set();
+            names.add(importName);
+            byModule.set(moduleSpecifier, names);
+            pendingImports.set(relativePosix, byModule);
+        },
+        planNamedImport(relativePosix, moduleSpecifier, importName, atOffset) {
+            if (!moduleSpecifier || !importName) {
+                return { kind: 'blocked', reason: `no import source is configured for \`${importName}\`` };
+            }
+            const targetPath = resolveWithinRoot(absoluteRoot, relativePosix);
+            let text;
+            try {
+                text = readFileSync(targetPath, 'utf-8');
+            }
+            catch (error) {
+                return {
+                    kind: 'blocked',
+                    reason: `cannot read ${relativePosix}: ${error instanceof Error ? error.message : String(error)}`,
+                };
+            }
+            return planNamedImportInSource(targetPath, text, moduleSpecifier, importName, atOffset);
+        },
+        flushPendingImports() {
+            let changedFiles = 0;
+            for (const [relativePosix, byModule] of pendingImports) {
+                const targetPath = resolveWithinRoot(absoluteRoot, relativePosix);
+                let text;
+                try {
+                    text = readFileSync(targetPath, 'utf-8');
+                }
+                catch (error) {
+                    log.warn(`arch-guard: cannot add imports to ${relativePosix}: ${error instanceof Error ? error.message : String(error)}`);
+                    continue;
+                }
+                let changed = false;
+                for (const [moduleSpecifier, names] of byModule) {
+                    for (const name of [...names].sort((a, b) => a.localeCompare(b))) {
+                        const result = ensureNamedImportInSource(targetPath, text, moduleSpecifier, name);
+                        if (result.blocked !== undefined) {
+                            // 到这一步才发现补不上，说明改写已经落盘了——必须喊出来，不能留一份静默的坏代码。
+                            log.warn(`arch-guard: ${relativePosix} now uses \`${name}\` but no import was added — ${result.blocked}. ` +
+                                'Review this file: it may not compile.');
+                            continue;
+                        }
+                        if (result.changed) {
+                            text = result.text;
+                            changed = true;
+                            log.info(`arch-guard: imported ${name} from ${moduleSpecifier} in ${relativePosix}`);
+                        }
+                    }
+                }
+                if (changed) {
+                    writeFileAtomically(targetPath, text);
+                    changedFiles += 1;
+                }
+            }
+            pendingImports.clear();
+            return changedFiles;
+        },
         resolveFile(relativePosix) {
             return resolveWithinRoot(absoluteRoot, relativePosix);
         },

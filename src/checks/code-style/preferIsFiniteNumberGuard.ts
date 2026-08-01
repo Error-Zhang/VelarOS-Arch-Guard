@@ -2,6 +2,7 @@ import { defineCheck } from '../../core/defineCheck'
 import type { FixContext } from '../../core/fixContext'
 import ts from 'typescript'
 
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import { collectCodeStyleFiles, getCachedSourceFile, lineOf, snippetOf, walk } from './_shared'
 import {
   expressionsTextEqual,
@@ -32,6 +33,7 @@ const preferIsFiniteNumberGuard = defineCheck({
   defaultSeverity: 'error',
   run({ context, report }) {
     const section = report.section('Prefer isFiniteNumber')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context)) {
       const sourceFile = getCachedSourceFile(context, info)
       walk(sourceFile, (node) => {
@@ -53,7 +55,7 @@ const preferIsFiniteNumberGuard = defineCheck({
             fingerprintInput: `${info.relativePath}::${line}::is-finite-number`,
             fixPhase: CodeStyleFixPhase.preferIsFiniteNumber,
             fixStartOffset: node.getStart(sourceFile),
-            applyFix: fixReplaceRange(info.relativePath, sourceFile, node, replacement),
+            applyFix: fixReplaceRange(info.relativePath, sourceFile, node, replacement, helpers),
           })
           return
         }
@@ -74,7 +76,7 @@ const preferIsFiniteNumberGuard = defineCheck({
             fingerprintInput: `${info.relativePath}::${line}::not-finite-number-or`,
             fixPhase: CodeStyleFixPhase.preferIsFiniteNumber,
             fixStartOffset: node.getStart(sourceFile),
-            applyFix: fixReplaceRange(info.relativePath, sourceFile, node, replacement),
+            applyFix: fixReplaceRange(info.relativePath, sourceFile, node, replacement, helpers),
           })
         }
       })
@@ -86,14 +88,16 @@ function fixReplaceRange(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.Node,
-  replacement: string
+  replacement: string,
+  helpers: HelperImportSources
 ): (ctx: FixContext) => void {
-  return (ctx) => {
-    const text = ctx.readTextFile(relativePath)
-    const start = node.getStart(sourceFile)
-    const end = node.getEnd()
-    ctx.writeTextFile(relativePath, `${text.slice(0, start)}${replacement}${text.slice(end)}`)
-  }
+  return fixReplaceSpan({
+    relativePath,
+    start: node.getStart(sourceFile),
+    end: node.getEnd(),
+    replacement,
+    helpers,
+  }).applyFix
 }
 
 interface FiniteAndPlan {

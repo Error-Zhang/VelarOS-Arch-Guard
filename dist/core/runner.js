@@ -39,11 +39,14 @@ async function runArchGuard(options) {
     });
     const baselinePath = resolveBaselinePath(config.rootDir, options.baselinePath);
     const baseline = options.ignoreBaseline ? undefined : loadBaselineFile(baselinePath);
+    // 每趟一本新账。复用同一本会让第一趟就把配额扣光，后面每趟都把存量违规判成「超出冻结份数」——
+    // `run --fix` 判红而 `verify` 对同一棵树判绿。见 Baseline / BaselineScan 的分工说明。
+    let baselineScan = baseline?.openScan();
     let aggregate = await executeChecksPass({
         checksToRun,
         config,
         sharedContext,
-        baseline,
+        baselineScan,
         logger,
     });
     const fixGloballyEnabled = resolveFixEnabled(options.fix, config);
@@ -58,11 +61,12 @@ async function runArchGuard(options) {
             if (applied === 0)
                 break;
             sharedContext.cache.clear();
+            baselineScan = baseline?.openScan();
             aggregate = await executeChecksPass({
                 checksToRun,
                 config,
                 sharedContext,
-                baseline,
+                baselineScan,
                 logger,
             });
         }
@@ -70,32 +74,54 @@ async function runArchGuard(options) {
     for (const reporter of options.reporters) {
         await reporter.report(aggregate, { rootDir: config.rootDir });
     }
-    if (baseline) {
+    let staleFailure = false;
+    let baselineStatus;
+    if (baselineScan) {
         // 当 only/skip/tag 过滤启用时，未跑的 check 对应的 baseline 必然 "stale"，
         // 那只是过滤副作用，不是真正的过时条目，因此跳过提示和自动清理。
-        const filterActive = isFilterActive(options.filter) || options.fileScopeActive === true;
-        if (!filterActive) {
-            const staleEntries = baseline.staleEntries;
+        const scopeActive = isFilterActive(options.filter) || options.fileScopeActive === true;
+        const staleEntries = scopeActive ? [] : baselineScan.staleEntries;
+        const contentMismatches = baselineScan.contentMismatches.filter((item) => item.kind === 'content');
+        const quotaOverflows = baselineScan.contentMismatches.filter((item) => item.kind === 'quota');
+        baselineStatus = {
+            scopeActive,
+            staleCount: staleEntries.length,
+            contentMismatchCount: contentMismatches.length,
+            quotaOverflowCount: quotaOverflows.length,
+        };
+        if (contentMismatches.length > 0 && (options.warnStaleBaseline ?? true)) {
+            logger.warn(`${contentMismatches.length} violation${contentMismatches.length === 1 ? '' : 's'} matched a baseline entry by fingerprint but not by content ` +
+                '(same file/line/rule, different code). Those violations are NOT waived — review them, they are new debt.');
+        }
+        if (quotaOverflows.length > 0 && (options.warnStaleBaseline ?? true)) {
+            logger.warn(`${quotaOverflows.length} violation${quotaOverflows.length === 1 ? '' : 's'} match a baseline entry exactly but exceed the number of ` +
+                'occurrences it froze. The extra copies are NOT waived — they are new debt.');
+        }
+        if (!scopeActive) {
             if (staleEntries.length > 0 && options.pruneStaleBaseline) {
-                writeBaselineEntriesFile(baselinePath, baseline.matchedEntries);
+                writeBaselineEntriesFile(baselinePath, baselineScan.matchedEntries);
                 if (options.warnStaleBaseline ?? true) {
                     logger.warn(`${staleEntries.length} stale baseline entr${staleEntries.length === 1 ? 'y was' : 'ies were'} pruned from ${baselinePath}.`);
                 }
             }
             else if (staleEntries.length > 0 && (options.warnStaleBaseline ?? true)) {
                 logger.warn(`${staleEntries.length} baseline entr${staleEntries.length === 1 ? 'y is' : 'ies are'} stale (no longer matched). ` +
-                    'Run `arch-guard baseline update` to regenerate.');
+                    'Run `arch-guard baseline prune` to retire them.');
+            }
+            if (staleEntries.length > 0 && options.failOnStale === true) {
+                staleFailure = true;
             }
         }
     }
     return {
         aggregate,
-        baseline,
-        exitCode: aggregate.hasFailures ? 1 : 0,
+        ...(baselineScan ? { baselineScan } : {}),
+        exitCode: aggregate.hasFailures || staleFailure ? 1 : 0,
+        ...(baselineStatus ? { baselineStatus } : {}),
     };
 }
 async function executeChecksPass(input) {
-    const { checksToRun, config, sharedContext, baseline, logger } = input;
+    const { checksToRun, config, sharedContext, baselineScan, logger } = input;
     const aggregate = new ReportAggregate();
     for (const check of checksToRun) {
         const severity = effectiveSeverity(check, config);
@@ -122,8 +148,8 @@ async function executeChecksPass(input) {
         }
         applySuppressedSections(report, config);
         applyInlineSuspendMarkers(report, config.rootDir, sharedContext.cache);
-        if (baseline) {
-            filterViolationsAgainstBaseline(report, baseline);
+        if (baselineScan) {
+            filterViolationsAgainstBaseline(report, baselineScan);
         }
         aggregate.add(report);
     }
@@ -187,12 +213,12 @@ function applySuppressedSections(report, config) {
         }
     }
 }
-function filterViolationsAgainstBaseline(report, baseline) {
+function filterViolationsAgainstBaseline(report, baselineScan) {
     for (const section of report.sections.values()) {
         let writeIndex = 0;
         for (let readIndex = 0; readIndex < section.violations.length; readIndex += 1) {
             const violation = section.violations[readIndex];
-            if (baseline.isWaived(violation))
+            if (baselineScan.isWaived(violation))
                 continue;
             section.violations[writeIndex] = violation;
             writeIndex += 1;
@@ -205,5 +231,5 @@ function resolveBaselinePath(rootDir, override) {
         return resolve(rootDir, override);
     return resolve(rootDir, '.arch-guard/baseline.json');
 }
-export { collectAllChecks, effectiveSeverity, resolveBaselinePath, runArchGuard };
+export { collectAllChecks, effectiveSeverity, isFilterActive, resolveBaselinePath, runArchGuard };
 //# sourceMappingURL=runner.js.map

@@ -19,6 +19,7 @@ export type { FileScopeConfig, ResolvedConfig, RuleOverride, UserConfig } from '
 export type { BaselineEntry, BaselineFile } from './core/baseline'
 export {
   Baseline,
+  BaselineScan,
   loadBaselineFile,
   writeBaselineEntriesFile,
   writeBaselineFile,
@@ -33,7 +34,7 @@ export type {
 export { defineCheck, isCheck } from './core/defineCheck'
 export type { Plugin, PluginInput, PluginValidateContext } from './core/definePlugin'
 export { definePlugin } from './core/definePlugin'
-export type { FixContext, TextReplacementOptions, TextReplacementRange } from './core/fixContext'
+export type { FixContext, NamedImportPlan, TextReplacementOptions, TextReplacementRange } from './core/fixContext'
 export { createFixContext } from './core/fixContext'
 export {
   applyInlineSuspendMarkers,

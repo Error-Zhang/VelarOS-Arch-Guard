@@ -1,7 +1,7 @@
 import { defineCheck } from '../../core/defineCheck'
-import type { FixContext } from '../../core/fixContext'
 import ts from 'typescript'
 
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import { collectCodeStyleFiles, getCachedSourceFile, lineOf, snippetOf, walk } from './_shared'
 import {
   shouldSkipTypeofNumberEqForFiniteAndPair,
@@ -40,6 +40,7 @@ const forbidRawRuntimeTypeGuards = defineCheck({
   defaultSeverity: 'error',
   run({ context, report }) {
     const section = report.section('Raw runtime type guards')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context)) {
       const sourceFile = getCachedSourceFile(context, info)
       const declaredIdentifiers = collectRuntimeDeclaredIdentifiers(sourceFile)
@@ -60,7 +61,7 @@ const forbidRawRuntimeTypeGuards = defineCheck({
               line,
               message: `${info.relativePath}:${line}: "${snippetOf(sourceFile, node)}" — \`!== null\` 与 \`typeof … === 'object'\` 联写时冗余；同一值应整体写成 isObject(${formatGuardOperand(merged.expr, sourceFile)})（等价于 typeof === 'object' 且排除 null）。`,
               fingerprintInput: `${info.relativePath}::${line}::merge-typeof-object`,
-              ...fixReplaceRange(info.relativePath, sourceFile, node, replacement),
+              ...fixReplaceRange(info.relativePath, node, replacement, helpers),
               fixPhase: CodeStyleFixPhase.rawRuntimeTypeGuards,
             })
             return
@@ -80,7 +81,7 @@ const forbidRawRuntimeTypeGuards = defineCheck({
             line,
             message: `${info.relativePath}:${line}: "${snippetOf(sourceFile, node)}" — use ${replacement}.`,
             fingerprintInput: `${info.relativePath}::${line}::array-is-array`,
-            ...fixReplaceRange(info.relativePath, sourceFile, node, replacement),
+            ...fixReplaceRange(info.relativePath, node, replacement, helpers),
             fixPhase: CodeStyleFixPhase.rawRuntimeTypeGuards,
           })
           return
@@ -123,7 +124,7 @@ const forbidRawRuntimeTypeGuards = defineCheck({
             line,
             message: `${info.relativePath}:${line}: "${snippetOf(sourceFile, node)}" — use ${replacement} (avoids treating \`null\` like a non-null object). @arch-guard:suspend if you truly need raw typeof.`,
             fingerprintInput: `${info.relativePath}::${line}::typeof-object`,
-            ...fixReplaceRange(info.relativePath, sourceFile, node, replacement),
+            ...fixReplaceRange(info.relativePath, node, replacement, helpers),
             fixPhase: CodeStyleFixPhase.rawRuntimeTypeGuards,
           })
           return
@@ -158,7 +159,7 @@ const forbidRawRuntimeTypeGuards = defineCheck({
           line,
           message: `${info.relativePath}:${line}: "${snippetOf(sourceFile, node)}" — use ${replacement}.`,
           fingerprintInput: `${info.relativePath}::${line}::typeof-${typeofPrim.primitive}`,
-          ...fixReplaceRange(info.relativePath, sourceFile, node, replacement),
+          ...fixReplaceRange(info.relativePath, node, replacement, helpers),
           fixPhase: CodeStyleFixPhase.rawRuntimeTypeGuards,
         })
       })
@@ -187,21 +188,18 @@ function typeofPrimitiveToGuard(primitive: string): string | undefined {
 
 function fixReplaceRange(
   relativePath: string,
-  sourceFile: ts.SourceFile,
   node: ts.Node,
-  replacement: string
-): { applyFix: (ctx: FixContext) => void; fixStartOffset: number } {
-  const fixStartOffset = node.getFullStart()
-  return {
-    fixStartOffset,
-    applyFix: (ctx) => {
-      ctx.replaceTextRange(
-        relativePath,
-        { start: node.getFullStart(), end: node.getEnd() },
-        replacement
-      )
-    },
-  }
+  replacement: string,
+  helpers: HelperImportSources
+) {
+  return fixReplaceSpan({
+    relativePath,
+    start: node.getFullStart(),
+    end: node.getEnd(),
+    replacement,
+    helpers,
+    preserveLeadingTrivia: true,
+  })
 }
 
 function isBareArrayIsArrayCall(node: ts.CallExpression): boolean {

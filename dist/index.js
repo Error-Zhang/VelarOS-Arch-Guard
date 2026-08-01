@@ -14,7 +14,7 @@
  */
 export { defineConfig } from './config/defineConfig.js';
 export { loadConfig } from './config/loadConfig.js';
-export { Baseline, loadBaselineFile, writeBaselineEntriesFile, writeBaselineFile, } from './core/baseline.js';
+export { Baseline, BaselineScan, loadBaselineFile, writeBaselineEntriesFile, writeBaselineFile, } from './core/baseline.js';
 export { defineCheck, isCheck } from './core/defineCheck.js';
 export { definePlugin } from './core/definePlugin.js';
 export { createFixContext } from './core/fixContext.js';

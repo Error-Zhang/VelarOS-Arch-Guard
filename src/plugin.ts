@@ -15,7 +15,7 @@ export type {
 export { defineCheck, isCheck } from './core/defineCheck'
 export type { Plugin, PluginInput, PluginValidateContext } from './core/definePlugin'
 export { definePlugin } from './core/definePlugin'
-export type { FixContext, TextReplacementOptions, TextReplacementRange } from './core/fixContext'
+export type { FixContext, NamedImportPlan, TextReplacementOptions, TextReplacementRange } from './core/fixContext'
 export type { ArchGuardLogger, LogLevel } from './core/logger'
 export type { CheckReportSection } from './core/report'
 

@@ -9,7 +9,7 @@ export type { Check, CheckAppliesTo, CheckInput, CheckRunContext, CheckRunner, }
 export { defineCheck, isCheck } from './core/defineCheck.js';
 export type { Plugin, PluginInput, PluginValidateContext } from './core/definePlugin.js';
 export { definePlugin } from './core/definePlugin.js';
-export type { FixContext, TextReplacementOptions, TextReplacementRange } from './core/fixContext.js';
+export type { FixContext, NamedImportPlan, TextReplacementOptions, TextReplacementRange } from './core/fixContext.js';
 export type { ArchGuardLogger, LogLevel } from './core/logger.js';
 export type { CheckReportSection } from './core/report.js';
 export { collectFiles, findProjectRoot } from './utils/fs.js';

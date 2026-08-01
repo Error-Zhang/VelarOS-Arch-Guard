@@ -1,8 +1,14 @@
 node_modules/
-dist/
 coverage/
 *.tgz
 *.tsbuildinfo
+
+# dist/ 是**跟踪**的：从 git 安装本包的消费者拿不到 npm 的 prepack 构建，只能拿到仓库里
+# 有什么。以前这里写着 `dist/`，而 196 个 dist 文件是当年用 `git add -f` 硬塞进来的——
+# 于是「跟踪的 dist」和「构建出来的 dist」会悄悄分叉：新建的模块被 gitignore 挡住，
+# `git status` 里看不见，一次普通 `git add -A` 就提交出一份残缺的 dist，从 git 安装的
+# 消费者一 import 就崩。不 ignore 才是唯一的机械保证：新产物一律出现在 `git status` 里。
+# 由 tests/dist-tracking.test.mjs 钉住。
 
 # Defensive: TypeScript build artifacts must never appear inside src/.
 # Stray .d.ts/.js next to .ts here would pollute file scans and baselines.

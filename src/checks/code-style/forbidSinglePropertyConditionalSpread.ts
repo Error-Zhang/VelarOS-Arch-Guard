@@ -2,6 +2,7 @@ import { defineCheck } from '../../core/defineCheck'
 import type { FixContext } from '../../core/fixContext'
 import ts from 'typescript'
 
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import {
   collectCodeStyleFiles,
   getCachedSourceFile,
@@ -33,6 +34,7 @@ const forbidSinglePropertyConditionalSpread = defineCheck({
   defaultSeverity: 'error',
   run({ context, report }) {
     const section = report.section('Single-property conditional object spread')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context)) {
       const sourceFile = getCachedSourceFile(context, info)
       walk(sourceFile, (node) => {
@@ -48,7 +50,7 @@ const forbidSinglePropertyConditionalSpread = defineCheck({
           fingerprintInput: `${info.relativePath}::${line}::single-property-conditional-spread::${match.propertyName}`,
           fixPhase: CodeStyleFixPhase.preferToOptionalOverConditionalSpread,
           fixStartOffset: node.getStart(sourceFile),
-          applyFix: fixReplaceText(info.relativePath, sourceFile, node, match.replacement),
+          applyFix: fixReplaceText(info.relativePath, sourceFile, node, match.replacement, helpers),
         })
       })
     }
@@ -162,14 +164,16 @@ function fixReplaceText(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.Node,
-  replacement: string
+  replacement: string,
+  helpers: HelperImportSources
 ): (ctx: FixContext) => void {
-  return (ctx) => {
-    const text = ctx.readTextFile(relativePath)
-    const start = node.getStart(sourceFile)
-    const end = node.getEnd()
-    ctx.writeTextFile(relativePath, `${text.slice(0, start)}${replacement}${text.slice(end)}`)
-  }
+  return fixReplaceSpan({
+    relativePath,
+    start: node.getStart(sourceFile),
+    end: node.getEnd(),
+    replacement,
+    helpers,
+  }).applyFix
 }
 
 export { forbidSinglePropertyConditionalSpread }

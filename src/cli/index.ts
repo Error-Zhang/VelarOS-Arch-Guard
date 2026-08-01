@@ -5,7 +5,7 @@ import { initCommand } from './commands/init'
 import { listCommand } from './commands/list'
 import { runCommand } from './commands/run'
 import { verifyCommand } from './commands/verify'
-import { parseArgs, type ParsedArgs, toBoolean } from './argv'
+import { findUnknownOptions, parseArgs, type ParsedArgs, toBoolean } from './argv'
 
 const KnownCommands = new Set([
   'baseline',
@@ -27,7 +27,11 @@ Commands:
   verify                       Run and print one-line summary only. CI / AI agent friendly.
   list                         List all registered checks (supports --by-tag / --json / --ids-only).
   explain <check-id>           Show details for a single check.
-  baseline update|check        Manage baseline snapshot.
+  baseline update              Re-freeze violations. Honours --file/--changed/--only (scoped merge).
+  baseline prune               Retire baseline entries that no longer match. The only pruning entry point.
+  baseline migrate             Backfill contentDigest + count on existing entries; reports collisions.
+  baseline check               Verify the baseline covers every violation (never writes).
+                               ("baseline" with no sub-command prints this and exits 2.)
   doctor                       Validate config + plugins + rules consistency.
   init                         Create a safe starter arch-guard.config.mjs.
   help                         Show this help.
@@ -46,13 +50,30 @@ Common options:
   --out <path>                 Output file for json/sarif reporters.
   --no-baseline                Ignore baseline file.
   --baseline-path <path>       Override baseline file path.
-  --no-prune-stale-baseline    Keep stale baseline entries during run.
+  --fail-on-stale              (run / verify) Fail when the baseline still freezes already-fixed debt.
   --fix                        Apply supported auto-fixes after checks (overrides config fix flag).
   --no-fix                     Disable auto-fix (overrides config when fix is enabled).
   --log-level <error|warn|info|debug>
   --json                       (verify / list) Emit machine-readable JSON output.
   --by-tag                     (list) Group checks by tag instead of listing each one.
   --ids-only                   (list) Emit just the check ids, one per line.
+  --dry-run                    (baseline) Print what would change; never write.
+  --force                      (baseline prune) Allow pruning even when this run matched nothing.
+  --adopt-live-message         (baseline migrate) Trust current code over the frozen message on a mismatch.
+
+Read-only commands never write the baseline. \`run\` no longer prunes; \`--no-prune-stale-baseline\`
+is accepted and ignored. Use \`arch-guard baseline prune\` to retire fixed debt.
+
+A file scope that resolves to zero scannable files (e.g. \`--changed\` when the diff is all .md) is
+a no-op, never a whole-repository re-freeze. Only \`baseline update\`, \`baseline prune\` and
+\`baseline migrate\` may write, and only when the content actually changes. Read-only commands
+still run, but they say out loud that no file was scanned — "scanned nothing" is not "found nothing".
+
+\`--skip\` does not narrow the scope: it names what to leave out, so everything else is still the
+whole repository. Narrow a \`baseline update\` with \`--file\` / \`--changed\` / \`--only\` / \`--tag\`.
+
+Unknown long options are rejected (exit 2) rather than ignored — a typo in \`--dry-run\` must not
+silently turn into a write.
 `
 
 /** CLI 入口；返回 exit code 由 bin 启动器消费。 */
@@ -62,6 +83,8 @@ async function runCli(argv: readonly string[]): Promise<number> {
     console.info(Help)
     return 0
   }
+  const rejected = rejectUnknownOptions(parsed)
+  if (rejected !== 0) return rejected
 
   switch (parsed.command) {
     case 'help':
@@ -85,6 +108,25 @@ async function runCli(argv: readonly string[]): Promise<number> {
     default:
       return runCommand(parsed)
   }
+}
+
+/**
+ * 不认识的长选项一律拒绝，exit 2。
+ *
+ * 宽容解析在这里是净负债：`--dry-run` 打成 `--dryrun` 就静默失效，`baseline update` 照常
+ * 写盘；`--no-fix` 打错就变成真改代码。会改盘的 CLI 不能把手滑当成沉默的同意。
+ */
+function rejectUnknownOptions(parsed: ParsedArgs): number {
+  const unknown = findUnknownOptions(parsed)
+  if (unknown.length === 0) return 0
+  for (const { key, suggestion } of unknown) {
+    console.error(
+      `arch-guard: unknown option \`--${key}\`` +
+        (suggestion === undefined ? '.' : `. Did you mean \`--${suggestion}\`?`)
+    )
+  }
+  console.error('arch-guard: run `arch-guard help` for the supported options.')
+  return 2
 }
 
 function normalizeDefaultRunCommand(parsed: ParsedArgs): ParsedArgs {

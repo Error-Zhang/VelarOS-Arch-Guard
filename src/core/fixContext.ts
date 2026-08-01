@@ -2,6 +2,11 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 import { writeFileAtomically } from '../utils/atomicWrite'
+import {
+  ensureNamedImportInSource,
+  type NamedImportPlan,
+  planNamedImportInSource,
+} from '../utils/ensureNamedImport'
 
 import type { ArchGuardLogger } from './logger'
 
@@ -25,6 +30,34 @@ interface FixContext {
     replacement: string,
     options?: TextReplacementOptions
   ): void
+  /**
+   * 声明「这次改写引入了 `importName` 这个名字，它来自 `moduleSpecifier`」。
+   *
+   * **不立刻写盘**：import 插在文件头部会把后续所有 offset 顶掉，而同一轮里其它 fixer
+   * 拿的还是本轮解析时的 offset。请求会攒起来，由引擎在**本轮全部区间替换落盘之后**统一 flush，
+   * flush 时重新读盘、幂等去重。
+   */
+  requireNamedImport(relativePosix: string, moduleSpecifier: string, importName: string): void
+  /**
+   * 改盘**之前**问一句：在 `atOffset` 处引入 `importName` 安不安全。
+   *
+   * `satisfied` = 那个位置解析到的已经是同模块的值 import；`insert` = 名字自由，补一条即可；
+   * `blocked` = 名字被别的东西绑走了（顶层同名声明、别的模块的同名导入、遮蔽顶层的内层变量
+   * 或参数）。拿到 `blocked` 的 fixer 应当**放弃整次修复**：补不上 import 就别改表达式，
+   * 否则写出的是 `TS2304` + `TS2322` 级联，或者更糟——悄悄接到了另一个同名函数上。
+   */
+  planNamedImport(
+    relativePosix: string,
+    moduleSpecifier: string,
+    importName: string,
+    atOffset: number
+  ): NamedImportPlan
+}
+
+/** 引擎内部使用的 FixContext 面：多出一个 flush 钩子。 */
+interface InternalFixContext extends FixContext {
+  /** 落盘所有攒起来的 import 请求，返回实际改动的文件数。 */
+  flushPendingImports(): number
 }
 
 interface TextReplacementRange {
@@ -37,11 +70,87 @@ interface TextReplacementOptions {
   preserveLeadingTrivia?: boolean
 }
 
-function createFixContext(rootDir: string, log: ArchGuardLogger): FixContext {
+function createFixContext(rootDir: string, log: ArchGuardLogger): InternalFixContext {
   const absoluteRoot = resolve(rootDir)
+  /** `relativePosix` → `moduleSpecifier` → 名字集合。 */
+  const pendingImports = new Map<string, Map<string, Set<string>>>()
+
   return {
     rootDir: absoluteRoot,
     log,
+    requireNamedImport(relativePosix: string, moduleSpecifier: string, importName: string): void {
+      if (!moduleSpecifier || !importName) return
+      const byModule = pendingImports.get(relativePosix) ?? new Map<string, Set<string>>()
+      const names = byModule.get(moduleSpecifier) ?? new Set<string>()
+      names.add(importName)
+      byModule.set(moduleSpecifier, names)
+      pendingImports.set(relativePosix, byModule)
+    },
+    planNamedImport(
+      relativePosix: string,
+      moduleSpecifier: string,
+      importName: string,
+      atOffset: number
+    ): NamedImportPlan {
+      if (!moduleSpecifier || !importName) {
+        return { kind: 'blocked', reason: `no import source is configured for \`${importName}\`` }
+      }
+      const targetPath = resolveWithinRoot(absoluteRoot, relativePosix)
+      let text: string
+      try {
+        text = readFileSync(targetPath, 'utf-8')
+      } catch (error) {
+        return {
+          kind: 'blocked',
+          reason: `cannot read ${relativePosix}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        }
+      }
+      return planNamedImportInSource(targetPath, text, moduleSpecifier, importName, atOffset)
+    },
+    flushPendingImports(): number {
+      let changedFiles = 0
+      for (const [relativePosix, byModule] of pendingImports) {
+        const targetPath = resolveWithinRoot(absoluteRoot, relativePosix)
+        let text: string
+        try {
+          text = readFileSync(targetPath, 'utf-8')
+        } catch (error) {
+          log.warn(
+            `arch-guard: cannot add imports to ${relativePosix}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+          continue
+        }
+        let changed = false
+        for (const [moduleSpecifier, names] of byModule) {
+          for (const name of [...names].sort((a, b) => a.localeCompare(b))) {
+            const result = ensureNamedImportInSource(targetPath, text, moduleSpecifier, name)
+            if (result.blocked !== undefined) {
+              // 到这一步才发现补不上，说明改写已经落盘了——必须喊出来，不能留一份静默的坏代码。
+              log.warn(
+                `arch-guard: ${relativePosix} now uses \`${name}\` but no import was added — ${result.blocked}. ` +
+                  'Review this file: it may not compile.'
+              )
+              continue
+            }
+            if (result.changed) {
+              text = result.text
+              changed = true
+              log.info(`arch-guard: imported ${name} from ${moduleSpecifier} in ${relativePosix}`)
+            }
+          }
+        }
+        if (changed) {
+          writeFileAtomically(targetPath, text)
+          changedFiles += 1
+        }
+      }
+      pendingImports.clear()
+      return changedFiles
+    },
     resolveFile(relativePosix: string): string {
       return resolveWithinRoot(absoluteRoot, relativePosix)
     },
@@ -130,4 +239,10 @@ function readNextTrivia(text: string, index: number): number {
 }
 
 export { createFixContext }
-export type { FixContext, TextReplacementOptions, TextReplacementRange }
+export type {
+  FixContext,
+  InternalFixContext,
+  NamedImportPlan,
+  TextReplacementOptions,
+  TextReplacementRange,
+}

@@ -4,7 +4,7 @@ import type { ResolvedConfig } from '../config/types'
 import type { Reporter } from '../reporters/types'
 
 import { applyScheduledFixes, collectFixableViolations, resolveFixEnabled } from './applyFixes'
-import { type Baseline, loadBaselineFile, writeBaselineEntriesFile } from './baseline'
+import { type BaselineScan, loadBaselineFile, writeBaselineEntriesFile } from './baseline'
 import type { ArchGuardSharedContext } from './context'
 import { createSharedContext } from './context'
 import type { Check, CheckRunContext } from './defineCheck'
@@ -30,8 +30,15 @@ interface RunOptions {
   ignoreBaseline?: boolean
   /** 是否打印 baseline 失效条目提醒。默认 true。 */
   warnStaleBaseline?: boolean
-  /** 完整运行时是否自动移除已经不再命中的 baseline 条目。 */
+  /**
+   * 完整运行时是否自动移除已经不再命中的 baseline 条目（**写盘**）。默认 false。
+   *
+   * 0.3.0 起 CLI 的 `run` / `verify` 一律不传该项：**只读命令不许改棘轮**。
+   * 需要收缩基线走显式的 `arch-guard baseline prune`。
+   */
   pruneStaleBaseline?: boolean
+  /** stale baseline 条目是否算失败（让「已修好的债」必须被显式退役）。默认 false。 */
+  failOnStale?: boolean
   /**
    * 是否对带 `Violation.applyFix` 的违规尝试自动修复。
    * `true`/`false` 覆盖配置文件 `fix`；省略则使用 `config.fix`（默认 false）。
@@ -51,8 +58,25 @@ interface RunOptions {
  */
 interface RunResult {
   aggregate: ReportAggregate
-  baseline?: Baseline
+  /**
+   * **最后一趟**扫描的豁免账（stale / matched / 撞车都读这里）。
+   *
+   * `--fix` 会跑多趟；只有最后一趟描述的是修完之后这棵树的状态，中间趟的账是过程量。
+   */
+  baselineScan?: BaselineScan
   exitCode: number
+  /** baseline 相关的诊断（本次 run 是否带 filter/file scope、stale 数、内容撞车数）。 */
+  baselineStatus?: BaselineRunStatus
+}
+
+interface BaselineRunStatus {
+  /** only/skip/tag/file scope 是否启用——启用时 stale 判定不作数。 */
+  scopeActive: boolean
+  staleCount: number
+  /** fingerprint 命中但内容摘要不符的条数（疑似行号撞车导致的误豁免已被挡住）。 */
+  contentMismatchCount: number
+  /** 内容摘要对得上、但该条目的豁免配额已用完的条数（同一形态的违规变多了）。 */
+  quotaOverflowCount: number
 }
 
 /**
@@ -91,11 +115,14 @@ async function runArchGuard(options: RunOptions): Promise<RunResult> {
   const baselinePath = resolveBaselinePath(config.rootDir, options.baselinePath)
   const baseline = options.ignoreBaseline ? undefined : loadBaselineFile(baselinePath)
 
+  // 每趟一本新账。复用同一本会让第一趟就把配额扣光，后面每趟都把存量违规判成「超出冻结份数」——
+  // `run --fix` 判红而 `verify` 对同一棵树判绿。见 Baseline / BaselineScan 的分工说明。
+  let baselineScan = baseline?.openScan()
   let aggregate = await executeChecksPass({
     checksToRun,
     config,
     sharedContext,
-    baseline,
+    baselineScan,
     logger,
   })
 
@@ -109,11 +136,12 @@ async function runArchGuard(options: RunOptions): Promise<RunResult> {
       const applied = await applyScheduledFixes(candidates, fixContext, logger)
       if (applied === 0) break
       sharedContext.cache.clear()
+      baselineScan = baseline?.openScan()
       aggregate = await executeChecksPass({
         checksToRun,
         config,
         sharedContext,
-        baseline,
+        baselineScan,
         logger,
       })
     }
@@ -123,14 +151,40 @@ async function runArchGuard(options: RunOptions): Promise<RunResult> {
     await reporter.report(aggregate, { rootDir: config.rootDir })
   }
 
-  if (baseline) {
+  let staleFailure = false
+  let baselineStatus: BaselineRunStatus | undefined
+  if (baselineScan) {
     // 当 only/skip/tag 过滤启用时，未跑的 check 对应的 baseline 必然 "stale"，
     // 那只是过滤副作用，不是真正的过时条目，因此跳过提示和自动清理。
-    const filterActive = isFilterActive(options.filter) || options.fileScopeActive === true
-    if (!filterActive) {
-      const staleEntries = baseline.staleEntries
+    const scopeActive = isFilterActive(options.filter) || options.fileScopeActive === true
+    const staleEntries = scopeActive ? [] : baselineScan.staleEntries
+    const contentMismatches = baselineScan.contentMismatches.filter(
+      (item) => item.kind === 'content'
+    )
+    const quotaOverflows = baselineScan.contentMismatches.filter((item) => item.kind === 'quota')
+    baselineStatus = {
+      scopeActive,
+      staleCount: staleEntries.length,
+      contentMismatchCount: contentMismatches.length,
+      quotaOverflowCount: quotaOverflows.length,
+    }
+
+    if (contentMismatches.length > 0 && (options.warnStaleBaseline ?? true)) {
+      logger.warn(
+        `${contentMismatches.length} violation${contentMismatches.length === 1 ? '' : 's'} matched a baseline entry by fingerprint but not by content ` +
+          '(same file/line/rule, different code). Those violations are NOT waived — review them, they are new debt.'
+      )
+    }
+    if (quotaOverflows.length > 0 && (options.warnStaleBaseline ?? true)) {
+      logger.warn(
+        `${quotaOverflows.length} violation${quotaOverflows.length === 1 ? '' : 's'} match a baseline entry exactly but exceed the number of ` +
+          'occurrences it froze. The extra copies are NOT waived — they are new debt.'
+      )
+    }
+
+    if (!scopeActive) {
       if (staleEntries.length > 0 && options.pruneStaleBaseline) {
-        writeBaselineEntriesFile(baselinePath, baseline.matchedEntries)
+        writeBaselineEntriesFile(baselinePath, baselineScan.matchedEntries)
         if (options.warnStaleBaseline ?? true) {
           logger.warn(
             `${staleEntries.length} stale baseline entr${staleEntries.length === 1 ? 'y was' : 'ies were'} pruned from ${baselinePath}.`
@@ -139,16 +193,20 @@ async function runArchGuard(options: RunOptions): Promise<RunResult> {
       } else if (staleEntries.length > 0 && (options.warnStaleBaseline ?? true)) {
         logger.warn(
           `${staleEntries.length} baseline entr${staleEntries.length === 1 ? 'y is' : 'ies are'} stale (no longer matched). ` +
-            'Run `arch-guard baseline update` to regenerate.'
+            'Run `arch-guard baseline prune` to retire them.'
         )
+      }
+      if (staleEntries.length > 0 && options.failOnStale === true) {
+        staleFailure = true
       }
     }
   }
 
   return {
     aggregate,
-    baseline,
-    exitCode: aggregate.hasFailures ? 1 : 0,
+    ...(baselineScan ? { baselineScan } : {}),
+    exitCode: aggregate.hasFailures || staleFailure ? 1 : 0,
+    ...(baselineStatus ? { baselineStatus } : {}),
   }
 }
 
@@ -156,12 +214,12 @@ interface ExecuteChecksPassInput {
   checksToRun: readonly Check[]
   config: ResolvedConfig
   sharedContext: ArchGuardSharedContext
-  baseline: Baseline | undefined
+  baselineScan: BaselineScan | undefined
   logger: ReturnType<typeof createLogger>
 }
 
 async function executeChecksPass(input: ExecuteChecksPassInput): Promise<ReportAggregate> {
-  const { checksToRun, config, sharedContext, baseline, logger } = input
+  const { checksToRun, config, sharedContext, baselineScan, logger } = input
   const aggregate = new ReportAggregate()
 
   for (const check of checksToRun) {
@@ -192,8 +250,8 @@ async function executeChecksPass(input: ExecuteChecksPassInput): Promise<ReportA
     applySuppressedSections(report, config)
     applyInlineSuspendMarkers(report, config.rootDir, sharedContext.cache)
 
-    if (baseline) {
-      filterViolationsAgainstBaseline(report, baseline)
+    if (baselineScan) {
+      filterViolationsAgainstBaseline(report, baselineScan)
     }
 
     aggregate.add(report)
@@ -275,12 +333,12 @@ function applySuppressedSections(report: CheckReport, config: ResolvedConfig): v
   }
 }
 
-function filterViolationsAgainstBaseline(report: CheckReport, baseline: Baseline): void {
+function filterViolationsAgainstBaseline(report: CheckReport, baselineScan: BaselineScan): void {
   for (const section of report.sections.values()) {
     let writeIndex = 0
     for (let readIndex = 0; readIndex < section.violations.length; readIndex += 1) {
       const violation = section.violations[readIndex]!
-      if (baseline.isWaived(violation)) continue
+      if (baselineScan.isWaived(violation)) continue
       section.violations[writeIndex] = violation
       writeIndex += 1
     }
@@ -293,5 +351,5 @@ function resolveBaselinePath(rootDir: string, override?: string): string {
   return resolve(rootDir, '.arch-guard/baseline.json')
 }
 
-export { collectAllChecks, effectiveSeverity, resolveBaselinePath, runArchGuard }
-export type { RunOptions, RunResult }
+export { collectAllChecks, effectiveSeverity, isFilterActive,resolveBaselinePath, runArchGuard }
+export type { BaselineRunStatus,RunOptions, RunResult }

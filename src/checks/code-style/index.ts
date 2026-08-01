@@ -103,9 +103,28 @@ interface CodeStyleScopeOptions {
   skipPatterns?: readonly string[]
 }
 
+/**
+ * autofix 引入的原语（`isString` / `isEmpty` / `optionalWhen` …）从哪里 import。
+ *
+ * **不声明就不 autofix**：这一族有 15 条规则会吐出具名原语，补不上 import 的话改完的文件会
+ * 同时爆 `TS2304`（找不到名字）与 `TS2322`（未解析的标识符不携带类型谓词，原本靠裸 `typeof`
+ * 完成的窄化整体塌掉），报错数比缺失的 import 还多。所以没有来源时这些修复会被**拒绝并报出**，
+ * 而不是默默写出不编译的代码。宿主真把原语注入成全局时用 `assumeGlobals: true` 明说。
+ */
+interface CodeStyleHelperOptions {
+  /** 默认来源模块，如 `'@velaros-ai/core'`。 */
+  module?: string
+  /** 个别原语的来源覆盖，如 `{ stringifyPretty: '@my/json' }`。 */
+  bySymbol?: Readonly<Record<string, string>>
+  /** 这些原语全局可见（宿主注入）：不补 import，也不因此拒绝修复。 */
+  assumeGlobals?: boolean
+}
+
 interface CreateCodeStyleDefaultsInput {
   /** 扇出到每条 code-style 规则的公共扫描面。 */
   scope?: CodeStyleScopeOptions
+  /** autofix 引入的原语来源（见 {@link CodeStyleHelperOptions}）。 */
+  helpers?: CodeStyleHelperOptions
   /** 按 check id 追加的单条选项（如 `allowFiles`），与公共项浅合并。 */
   perCheck?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
 }
@@ -118,16 +137,30 @@ interface CreateCodeStyleDefaultsInput {
 function createCodeStyleDefaults(
   input: CreateCodeStyleDefaultsInput = {}
 ): Record<string, Record<string, unknown>> {
-  const scope = compactScope(input.scope ?? {})
+  const shared = { ...compactScope(input.scope ?? {}), ...compactHelpers(input.helpers ?? {}) }
   const defaults: Record<string, Record<string, unknown>> = {}
   for (const check of codeStyleChecks) {
-    defaults[check.id] = { ...scope, ...(input.perCheck?.[check.id] ?? {}) }
+    defaults[check.id] = { ...shared, ...(input.perCheck?.[check.id] ?? {}) }
   }
   for (const [id, options] of Object.entries(input.perCheck ?? {})) {
     if (defaults[id]) continue
-    defaults[id] = { ...scope, ...options }
+    defaults[id] = { ...shared, ...options }
   }
   return defaults
+}
+
+function compactHelpers(helpers: CodeStyleHelperOptions): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  if (typeof helpers.module === 'string' && helpers.module.length > 0) {
+    result.helperImportModule = helpers.module
+  }
+  if (helpers.bySymbol && Object.keys(helpers.bySymbol).length > 0) {
+    result.helperImportModuleBySymbol = helpers.bySymbol
+  }
+  if (helpers.assumeGlobals === true) {
+    result.helperAssumeGlobals = true
+  }
+  return result
 }
 
 function compactScope(scope: CodeStyleScopeOptions): Record<string, unknown> {
@@ -179,7 +212,11 @@ export {
   requireChineseComments,
   requireErrorLogging,
 }
-export type { CodeStyleScopeOptions, CreateCodeStyleDefaultsInput }
+export type {
+  CodeStyleHelperOptions,
+  CodeStyleScopeOptions,
+  CreateCodeStyleDefaultsInput,
+}
 
 // —— 规则集作者工具箱：项目自有的 code-style 规则可直接复用这批共享件 ——
 export {
@@ -198,4 +235,13 @@ export {
   walk,
 } from './_shared'
 export type { CodeStyleScope, CollectCodeStyleFilesOptions, SourceFileInfo } from './_shared'
+export {
+  fixReplaceSpan,
+  HelperPrimitiveNames,
+  helpersIntroducedBy,
+  NoHelperImports,
+  readHelperImportSources,
+  resolveHelperImport,
+} from './_fix'
+export type { HelperImportResolution, HelperImportSources, ReplaceSpanInput, ScheduledFix } from './_fix'
 export { CodeStyleFixPhase } from './fixPhases'

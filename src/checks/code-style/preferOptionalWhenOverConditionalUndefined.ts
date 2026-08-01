@@ -3,6 +3,7 @@ import type { FixContext } from '../../core/fixContext'
 import type { CheckReportSection } from '../../core/report'
 import ts from 'typescript'
 
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import {
   collectCodeStyleFiles,
   getCachedSourceFile,
@@ -39,20 +40,21 @@ const preferOptionalWhenOverConditionalUndefined = defineCheck({
   defaultSeverity: 'error',
   run({ context, report }) {
     const section = report.section('Prefer optionalWhen over conditional undefined')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context)) {
       const sourceFile = getCachedSourceFile(context, info)
       walk(sourceFile, (node) => {
         if (ts.isBinaryExpression(node)) {
-          reportOptionalWhenFallbackCoalesce(info.relativePath, sourceFile, node, section)
+          reportOptionalWhenFallbackCoalesce(info.relativePath, sourceFile, node, section, helpers)
           return
         }
         if (ts.isCallExpression(node)) {
-          reportToOptionalWrappedTernary(info.relativePath, sourceFile, node, section)
+          reportToOptionalWrappedTernary(info.relativePath, sourceFile, node, section, helpers)
           return
         }
         if (!ts.isConditionalExpression(node)) return
         if (enclosingToOptionalCall(node)) return
-        reportBareConditionalUndefinedTernary(info.relativePath, sourceFile, node, section)
+        reportBareConditionalUndefinedTernary(info.relativePath, sourceFile, node, section, helpers)
       })
     }
   },
@@ -82,7 +84,8 @@ function reportOptionalWhenFallbackCoalesce(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.BinaryExpression,
-  section: CheckReportSection
+  section: CheckReportSection,
+  helpers: HelperImportSources
 ): void {
   const replacement = readOptionalWhenFallbackReplacement(node, sourceFile)
   if (!replacement) return
@@ -96,7 +99,7 @@ function reportOptionalWhenFallbackCoalesce(
     fingerprintInput: `${relativePath}::${line}::optional-when-fallback-third-arg`,
     fixPhase: CodeStyleFixPhase.preferOptionalWhenOverConditionalUndefined,
     fixStartOffset: node.getStart(sourceFile),
-    applyFix: fixReplaceText(relativePath, sourceFile, node, replacement),
+    applyFix: fixReplaceText(relativePath, sourceFile, node, replacement, helpers),
   })
 }
 
@@ -123,7 +126,8 @@ function reportToOptionalWrappedTernary(
   relativePath: string,
   sourceFile: ts.SourceFile,
   call: ts.CallExpression,
-  section: CheckReportSection
+  section: CheckReportSection,
+  helpers: HelperImportSources
 ): void {
   const shape = readToOptionalUndefinedTernary(call)
   if (!shape) return
@@ -142,7 +146,7 @@ function reportToOptionalWrappedTernary(
     fingerprintInput: `${relativePath}::${line}::to-optional-conditional-undefined`,
     fixPhase: CodeStyleFixPhase.preferOptionalWhenOverConditionalUndefined,
     fixStartOffset: call.getStart(sourceFile),
-    applyFix: fixReplaceText(relativePath, sourceFile, call, replacement),
+    applyFix: fixReplaceText(relativePath, sourceFile, call, replacement, helpers),
   })
 }
 
@@ -150,7 +154,8 @@ function reportBareConditionalUndefinedTernary(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.ConditionalExpression,
-  section: CheckReportSection
+  section: CheckReportSection,
+  helpers: HelperImportSources
 ): void {
   if (readIsPresentNullCoalesce(node, sourceFile)) return
   if (matchNumberOrNullTernary(node, sourceFile)) return
@@ -168,7 +173,7 @@ function reportBareConditionalUndefinedTernary(
       fingerprintInput: `${relativePath}::${line}::truthy-self-undefined-ternary`,
       fixPhase: CodeStyleFixPhase.simplifyToOptionalTruthySelfTernary,
       fixStartOffset: node.getStart(sourceFile),
-      applyFix: fixReplaceText(relativePath, sourceFile, node, replacement),
+      applyFix: fixReplaceText(relativePath, sourceFile, node, replacement, helpers),
     })
     return
   }
@@ -185,7 +190,7 @@ function reportBareConditionalUndefinedTernary(
       fingerprintInput: `${relativePath}::${line}::number-guard-undefined-ternary`,
       fixPhase: CodeStyleFixPhase.simplifyToOptionalTruthySelfTernary,
       fixStartOffset: node.getStart(sourceFile),
-      applyFix: fixReplaceText(relativePath, sourceFile, node, replacement),
+      applyFix: fixReplaceText(relativePath, sourceFile, node, replacement, helpers),
     })
     return
   }
@@ -204,7 +209,7 @@ function reportBareConditionalUndefinedTernary(
       fingerprintInput: `${relativePath}::${line}::guard-self-undefined-ternary`,
       fixPhase: CodeStyleFixPhase.preferOptionalWhenOverConditionalUndefined,
       fixStartOffset: node.getStart(sourceFile),
-      applyFix: fixReplaceText(relativePath, sourceFile, node, replacement),
+      applyFix: fixReplaceText(relativePath, sourceFile, node, replacement, helpers),
     })
     return
   }
@@ -370,14 +375,16 @@ function fixReplaceText(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.Node,
-  replacement: string
+  replacement: string,
+  helpers: HelperImportSources
 ): (ctx: FixContext) => void {
-  return (ctx) => {
-    const text = ctx.readTextFile(relativePath)
-    const start = node.getStart(sourceFile)
-    const end = node.getEnd()
-    ctx.writeTextFile(relativePath, `${text.slice(0, start)}${replacement}${text.slice(end)}`)
-  }
+  return fixReplaceSpan({
+    relativePath,
+    start: node.getStart(sourceFile),
+    end: node.getEnd(),
+    replacement,
+    helpers,
+  }).applyFix
 }
 
 export { preferOptionalWhenOverConditionalUndefined }

@@ -3,6 +3,7 @@ import type { FixContext } from '../../core/fixContext'
 import ts from 'typescript'
 
 import { formatConditionForAnd, formatNegatedCondition } from './_booleanExpression'
+import { fixReplaceSpan, type HelperImportSources, readHelperImportSources } from './_fix'
 import {
   collectCodeStyleFiles,
   getCachedSourceFile,
@@ -38,6 +39,7 @@ const preferConditionalJsxAnd = defineCheck({
   defaultSeverity: 'error',
   run({ context, report }) {
     const section = report.section('Prefer conditional JSX &&')
+    const helpers = readHelperImportSources(context)
     for (const info of collectCodeStyleFiles(context, { frontendOnly: true })) {
       if (!info.relativePath.endsWith('.tsx')) continue
       const sourceFile = getCachedSourceFile(context, info)
@@ -57,7 +59,7 @@ const preferConditionalJsxAnd = defineCheck({
           fingerprintInput: `${info.relativePath}::${line}::jsx-ternary-null-to-and`,
           fixPhase: CodeStyleFixPhase.preferConditionalJsxAnd,
           fixStartOffset: node.getStart(sourceFile),
-          applyFix: fixReplaceText(info.relativePath, sourceFile, node, replacement),
+          applyFix: fixReplaceText(info.relativePath, sourceFile, node, replacement, helpers),
         })
       })
     }
@@ -120,14 +122,16 @@ function fixReplaceText(
   relativePath: string,
   sourceFile: ts.SourceFile,
   node: ts.Node,
-  replacement: string
+  replacement: string,
+  helpers: HelperImportSources
 ): (ctx: FixContext) => void {
-  return (ctx) => {
-    const text = ctx.readTextFile(relativePath)
-    const start = node.getStart(sourceFile)
-    const end = node.getEnd()
-    ctx.writeTextFile(relativePath, `${text.slice(0, start)}${replacement}${text.slice(end)}`)
-  }
+  return fixReplaceSpan({
+    relativePath,
+    start: node.getStart(sourceFile),
+    end: node.getEnd(),
+    replacement,
+    helpers,
+  }).applyFix
 }
 
 export { preferConditionalJsxAnd }

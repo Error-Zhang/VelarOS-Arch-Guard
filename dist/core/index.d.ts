@@ -1,5 +1,5 @@
-export type { BaselineEntry, BaselineFile } from './baseline.js';
-export { Baseline, loadBaselineFile, writeBaselineEntriesFile, writeBaselineFile, } from './baseline.js';
+export type { BaselineContentMismatch, BaselineEntry, BaselineFile } from './baseline.js';
+export { Baseline, baselineEntryFromViolation, BaselineScan, contentDigestForMessage, keyFromBaselineEntry, loadBaselineFile, normalizeMessageForContentDigest, readBaselineEntries, serializeBaselineEntries, waiverKeyFromBaselineEntry, writeBaselineEntriesFile, writeBaselineFile, } from './baseline.js';
 export type { ArchGuardSharedContext } from './context.js';
 export { createSharedContext, DefaultExcludeDirNames, FileCollections, SharedCache } from './context.js';
 export type { Check, CheckAppliesTo, CheckInput, CheckRunContext, CheckRunner } from './defineCheck.js';
@@ -8,15 +8,15 @@ export type { Plugin, PluginInput, PluginValidateContext } from './definePlugin.
 export { definePlugin } from './definePlugin.js';
 export type { CheckFilter, CheckFilterInput } from './filter.js';
 export { buildCheckFilter, passesFilter } from './filter.js';
-export type { FixContext, TextReplacementOptions, TextReplacementRange } from './fixContext.js';
+export type { FixContext, NamedImportPlan, TextReplacementOptions, TextReplacementRange } from './fixContext.js';
 export { createFixContext } from './fixContext.js';
 export { applyInlineSuspendMarkers, ARCH_GUARD_SUSPEND_ALL, ARCH_GUARD_SUSPEND_FILE, ARCH_GUARD_SUSPEND_LINE, } from './inlineSuspendMarkers.js';
 export type { ArchGuardLogger, LogLevel } from './logger.js';
 export { createLogger } from './logger.js';
 export type { ReportSummary } from './report.js';
 export { CheckReport, CheckReportSection, ReportAggregate, resolveSeverityOverride } from './report.js';
-export type { RunOptions, RunResult } from './runner.js';
-export { collectAllChecks, effectiveSeverity, resolveBaselinePath, runArchGuard } from './runner.js';
+export type { BaselineRunStatus, RunOptions, RunResult } from './runner.js';
+export { collectAllChecks, effectiveSeverity, isFilterActive, resolveBaselinePath, runArchGuard, } from './runner.js';
 export type { SeverityLevel } from './severity.js';
 export { coerceSeverity, isFailingSeverity, maxSeverity, SeverityRank } from './severity.js';
 export type { Violation, ViolationInput } from './violation.js';
